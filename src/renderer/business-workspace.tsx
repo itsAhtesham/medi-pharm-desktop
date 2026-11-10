@@ -1,3 +1,4 @@
+import type { NavigationIntent } from './navigation';
 import { CsvButton, CustomerSupplies } from './reports';
 import React, { useEffect, useRef, useState, useId } from 'react';
 import {
@@ -150,6 +151,7 @@ function Picker({
 }
 export function BusinessWorkspace({
   section,
+  intent,
   active,
   enabled,
   epoch,
@@ -157,6 +159,7 @@ export function BusinessWorkspace({
   onCommit,
 }: {
   section: string;
+  intent: NavigationIntent | null;
   active: boolean;
   enabled: boolean;
   epoch: number;
@@ -194,7 +197,7 @@ export function BusinessWorkspace({
         ? 'medicines'
         : section === 'Purchases'
           ? 'purchases'
-          : section === 'History'
+          : section === 'Reports'
             ? auditId
               ? 'history'
               : 'purchases'
@@ -210,6 +213,26 @@ export function BusinessWorkspace({
     setAuditId(undefined);
     setData(null);
   }, [section]);
+  const consumedIntent = useRef<string | null>(null);
+  useEffect(() => {
+    if (!active || !enabled || !intent || consumedIntent.current === intent.key) return;
+    consumedIntent.current = intent.key;
+    setPage(0);
+    setSearch('');
+    setError('');
+    setMessage('');
+    setPreview(null);
+    if (intent.action === 'newCustomer' || intent.action === 'newMedicine')
+      setEditor({
+        type: 'catalog',
+        inline: false,
+        value: freshCatalog(intent.action === 'newCustomer' ? 'customer' : 'medicine'),
+      });
+    if (intent.action === 'newPurchase') setEditor({ type: 'purchase', value: freshPurchase() });
+    if (intent.action === 'due' || intent.action === 'scheduled' || intent.action === 'all')
+      setTab(intent.action);
+    if (intent.action === 'supplies' && intent.id) setSupplyCustomer(intent.id);
+  }, [intent, active, enabled]);
   useEffect(() => {
     if (!active || !enabled) return;
     let live = true;
@@ -1050,90 +1073,122 @@ export function BusinessWorkspace({
           ) : (
             <>
               {(kind === 'customers' || kind === 'medicines') && (
-                <div className="record-list">
-                  {data[kind].map((row) => (
-                    <article className="card record-row" key={row.id}>
-                      <div>
-                        <h2>{row.name}</h2>
-                        {'phone' in row ? (
-                          <p>
-                            {row.phone} · {row.age === null ? 'Age not recorded' : `Age ${row.age}`}
-                          </p>
-                        ) : (
-                          <p>
-                            {row.strength} · {row.form}
-                          </p>
-                        )}
-                        {'notes' in row && row.notes && <p>{row.notes}</p>}
-                      </div>
-                      <div className="business-actions">
-                        <button
-                          className="secondary"
-                          disabled={!enabled}
-                          onClick={() =>
-                            begin({
-                              type: 'catalog',
-                              inline: false,
-                              value:
-                                'phone' in row
-                                  ? {
-                                      kind: 'customer',
-                                      requestId: crypto.randomUUID(),
-                                      id: row.id,
-                                      expectedVersion: row.version,
-                                      name: row.name,
-                                      phone: row.phone,
-                                      age: row.age,
-                                      notes: row.notes,
-                                      archived: row.archived_at !== null,
-                                    }
-                                  : {
-                                      kind: 'medicine',
-                                      requestId: crypto.randomUUID(),
-                                      id: row.id,
-                                      expectedVersion: row.version,
-                                      name: row.name,
-                                      strength: row.strength,
-                                      form: row.form,
-                                      archived: row.archived_at !== null,
-                                    },
-                            })
-                          }
-                        >
-                          Edit {kind === 'customers' ? 'customer' : 'medicine'}
-                        </button>
-                        <button
-                          className="text-button"
-                          onClick={() => {
-                            setHistoryFilter({
-                              ...('phone' in row ? { customerId: row.id } : { medicineId: row.id }),
-                              label: row.name,
-                            });
-                            setDetail(null);
-                          }}
-                        >
-                          View purchases
-                        </button>
-                        {'phone' in row && (
-                          <button
-                            className="secondary"
-                            disabled={!enabled}
-                            onClick={() => {
-                              setSupplyCustomer(row.id);
-                              setDetail(null);
-                            }}
-                          >
-                            View current supplies
-                          </button>
-                        )}
-                      </div>
-                      {historyFilter &&
-                        (historyFilter.customerId === row.id ||
-                          historyFilter.medicineId === row.id) && (
-                          <RelatedPurchases filter={historyFilter} onSelect={setDetail} />
-                        )}
-                    </article>
-                  ))}
+                <div className="table-scroll panel">
+                  <table className="catalog-table">
+                    <thead>
+                      <tr>
+                        <th>{kind === 'customers' ? 'Customer' : 'Medicine'}</th>
+                        <th>{kind === 'customers' ? 'Phone / age' : 'Strength / form'}</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {data[kind].map((row) => (
+                        <React.Fragment key={row.id}>
+                          <tr className="record-row">
+                            <td>
+                              <strong>{row.name}</strong>
+                              {'notes' in row && row.notes && (
+                                <small className="cell-detail">{row.notes}</small>
+                              )}
+                            </td>
+                            <td>
+                              {'phone' in row ? (
+                                <p>
+                                  {row.phone} ·{' '}
+                                  {row.age === null ? 'Age not recorded' : `Age ${row.age}`}
+                                </p>
+                              ) : (
+                                <p>
+                                  {row.strength} · {row.form}
+                                </p>
+                              )}
+                            </td>
+                            <td>
+                              <span className={`status-chip ${row.archived_at ? '' : 'info'}`}>
+                                {row.archived_at ? 'Archived' : 'Active'}
+                              </span>
+                            </td>
+                            <td>
+                              <div className="business-actions">
+                                <button
+                                  className="secondary"
+                                  disabled={!enabled}
+                                  onClick={() =>
+                                    begin({
+                                      type: 'catalog',
+                                      inline: false,
+                                      value:
+                                        'phone' in row
+                                          ? {
+                                              kind: 'customer',
+                                              requestId: crypto.randomUUID(),
+                                              id: row.id,
+                                              expectedVersion: row.version,
+                                              name: row.name,
+                                              phone: row.phone,
+                                              age: row.age,
+                                              notes: row.notes,
+                                              archived: row.archived_at !== null,
+                                            }
+                                          : {
+                                              kind: 'medicine',
+                                              requestId: crypto.randomUUID(),
+                                              id: row.id,
+                                              expectedVersion: row.version,
+                                              name: row.name,
+                                              strength: row.strength,
+                                              form: row.form,
+                                              archived: row.archived_at !== null,
+                                            },
+                                    })
+                                  }
+                                >
+                                  Edit {kind === 'customers' ? 'customer' : 'medicine'}
+                                </button>
+                                <button
+                                  className="text-button"
+                                  onClick={() => {
+                                    setHistoryFilter({
+                                      ...('phone' in row
+                                        ? { customerId: row.id }
+                                        : { medicineId: row.id }),
+                                      label: row.name,
+                                    });
+                                    setDetail(null);
+                                  }}
+                                >
+                                  View purchases
+                                </button>
+                                {'phone' in row && (
+                                  <button
+                                    className="secondary"
+                                    disabled={!enabled}
+                                    onClick={() => {
+                                      setSupplyCustomer(row.id);
+                                      setDetail(null);
+                                    }}
+                                  >
+                                    View current supplies
+                                  </button>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                          {historyFilter &&
+                            (historyFilter.customerId === row.id ||
+                              historyFilter.medicineId === row.id) && (
+                              <tr>
+                                <td colSpan={4}>
+                                  <RelatedPurchases filter={historyFilter} onSelect={setDetail} />
+                                </td>
+                              </tr>
+                            )}
+                        </React.Fragment>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               )}
               {kind === 'purchases' && (
@@ -1326,22 +1381,46 @@ function PurchaseList({
   onSelect: (p: Purchase) => void;
 }) {
   return (
-    <div className="record-list">
-      {purchases.map((p) => (
-        <article className="card record-row" key={p.id}>
-          <div>
-            <h2>
-              Purchase #{p.sequence} · {p.customer_name}
-            </h2>
-            <p>
-              {p.purchase_date} · {p.status} · {p.items.length} quantity rows
-            </p>
-          </div>
-          <button className="secondary" onClick={() => onSelect(p)}>
-            View purchase #{p.sequence}
-          </button>
-        </article>
-      ))}
+    <div className="table-scroll panel">
+      <table>
+        <thead>
+          <tr>
+            <th>Purchase</th>
+            <th>Customer</th>
+            <th>Date</th>
+            <th>Status</th>
+            <th>Quantity rows</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {purchases.map((p) => (
+            <tr className="record-row" key={p.id}>
+              <td>#{p.sequence}</td>
+              <td>{p.customer_name}</td>
+              <td className="date-cell">{p.purchase_date}</td>
+              <td>
+                <span className={`status-chip ${p.status === 'active' ? 'info' : 'danger'}`}>
+                  {p.status}
+                </span>
+              </td>
+              <td>{p.items.length}</td>
+              <td>
+                <button className="secondary" onClick={() => onSelect(p)}>
+                  View purchase #{p.sequence}
+                </button>
+              </td>
+            </tr>
+          ))}
+          {!purchases.length && (
+            <tr>
+              <td colSpan={6} className="empty-cell">
+                No purchases match this view.
+              </td>
+            </tr>
+          )}
+        </tbody>
+      </table>
     </div>
   );
 }

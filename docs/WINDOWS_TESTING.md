@@ -83,3 +83,16 @@ Follow [the workflow walkthrough](BUSINESS_WORKFLOWS.md) using synthetic records
 - Confirm CSV exports cannot target the application’s own data directory. CSVs are unencrypted portability reports and do not replace encrypted backups. Verify the destination and its access permissions before using real data.
 
 Linux verification does not certify Windows rename/locking, save-dialog overwrite confirmation, removable-drive flush behavior or spreadsheet import behavior. Record those results on the actual Windows 11 laptop and Windows 10 test system.
+
+
+## Dashboard and desktop layout
+
+Use the [interface guide](UI_DESIGN.md) for count definitions. On both Windows targets:
+
+- At 1366×768 and 1920×1080, check 100%, 125% and 150% Windows display scaling. Verify native title controls, menu navigation, visible keyboard focus, sidebar toggle, table scrolling and access to form save/discard buttons. Linux Electron zoom tests are supporting evidence, not native DPI certification.
+- Start empty, create a customer and medicine through dashboard quick actions, and record a purchase. Confirm saved counts and the seven-day count chart. Cancel a purchase and confirm it disappears from active counts.
+- Create due and future reminders, including two medicines for one customer. Compare cycle counts with distinct customer counts. Check the customer link opens the correct supply report and View all opens the matching follow-up view.
+- Record a future-starting refill while current coverage ends within five days. Verify current coverage remains in Ending soon; closing a reminder must not remove its supply coverage.
+- Open a draft from a shortcut, lock/sign in, and confirm the draft survives. Other navigation must remain disabled until save/discard.
+- Create a backup from the dashboard after configuration and verify the status bar timestamp. With backups locked/unconfigured, the same shortcut must open Settings. Rehearse external-copy pending status.
+- Verify the Reports tab still exposes purchase details/history and filtered CSV exports, and that keyboard entry works in the denser purchase form.

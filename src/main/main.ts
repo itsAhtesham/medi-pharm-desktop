@@ -331,6 +331,12 @@ function registerApi(): void {
       'export',
     );
   });
+  handle(
+    channels.dashboard,
+    noInputSchema,
+    'read',
+    () => service?.request({ command: 'dashboard' }) ?? failure(),
+  );
   handle(channels.lifecycle, noInputSchema, null, async () => {
     await syncAccountState();
     return success(lifecycle.value);

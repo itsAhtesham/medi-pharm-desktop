@@ -1,3 +1,4 @@
+import { dashboardSchema, type DashboardData } from './dashboard';
 import {
   csvServiceInputSchema,
   csvResultSchema,
@@ -193,6 +194,7 @@ export type WorkspaceStatus = z.infer<typeof workspaceStatusSchema>;
 export type AccountState = z.infer<typeof accountStateSchema>;
 const envelope = { version, id: z.uuid() };
 export const serviceRequestSchema = z.discriminatedUnion('command', [
+  z.object({ ...envelope, command: z.literal('dashboard') }).strict(),
   z.object({ ...envelope, command: z.literal('exportCsv'), input: csvServiceInputSchema }).strict(),
   z
     .object({ ...envelope, command: z.literal('customerSupplies'), input: supplyQuerySchema })
@@ -260,6 +262,7 @@ export type ServiceCommand = ServiceRequest extends infer R
     : never
   : never;
 export const serviceResultSchemas = {
+  dashboard: dashboardSchema,
   exportCsv: csvResultSchema,
   customerSupplies: supplyResultSchema,
   businessQuery: queryResultSchema,
@@ -296,6 +299,7 @@ export const serviceMessageSchema = z.discriminatedUnion('type', [
 ]);
 
 export interface DesktopApi {
+  dashboard(): Promise<Result<DashboardData>>;
   exportCsv(input: CsvInput): Promise<Result<CsvResult>>;
   customerSupplies(input: SupplyQuery): Promise<Result<SupplyResult>>;
   businessQuery(input: BusinessQuery): Promise<Result<BusinessData>>;
@@ -325,6 +329,7 @@ export interface DesktopApi {
   onLifecycle(listener: (state: Lifecycle) => void): () => void;
 }
 export const channels = {
+  dashboard: 'desktop:dashboard',
   exportCsv: 'desktop:export-csv',
   customerSupplies: 'desktop:customer-supplies',
   businessQuery: 'desktop:business-query',

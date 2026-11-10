@@ -6,7 +6,9 @@ export function BackupPanel({
   fresh = false,
   disabled = false,
   onRestored,
+  onStatusChange,
 }: {
+  onStatusChange?: (status: BackupStatus) => void;
   fresh?: boolean;
   disabled?: boolean;
   onRestored: (backupCreated: boolean) => void;
@@ -28,6 +30,9 @@ export function BackupPanel({
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const blocked = busy || disabled;
+  useEffect(() => {
+    if (status && !disabled) onStatusChange?.(status);
+  }, [status, disabled, onStatusChange]);
   useEffect(() => {
     if (fresh || disabled) return;
     let active = true;

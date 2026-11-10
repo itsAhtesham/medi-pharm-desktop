@@ -1,3 +1,4 @@
+import { DashboardService } from '../application/dashboard-service';
 import { CsvExporter } from '../application/csv-export';
 import { SupplyReport } from '../application/supply-report';
 import { BusinessService } from '../application/business-service';
@@ -61,6 +62,9 @@ port.on('message', (event) => {
           break;
         case 'customerSupplies':
           data = new SupplyReport(store).query(request.input);
+          break;
+        case 'dashboard':
+          data = new DashboardService(store).read();
           break;
         case 'businessQuery':
           data = business.query(request.input);

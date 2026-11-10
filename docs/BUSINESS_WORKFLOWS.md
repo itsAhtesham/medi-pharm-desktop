@@ -8,7 +8,7 @@ Open **Customers → Add customer**. Enter a name and a phone with 7–15 digits
 
 Open **Medicines → Add medicine**. Name, strength and form identify a catalogue entry; name and form are required. Case, Unicode compatibility forms and repeated whitespace are normalized for identity matching. An archived match must be restored instead of duplicated. Choose quantity units on purchases, not in the catalogue. Existing purchase labels preserve their dated snapshots after catalogue changes.
 
-Lists and pickers have pages of 20. **View purchases** on a customer or medicine opens its purchase history. **History** provides the complete purchase list. Purchase details include recorded supplies, corrections and cancellation history. **View current supplies** on a customer gathers medicine coverage, run-out dates and reminder states in one place, separating future-starting supplies from today’s coverage.
+Lists and pickers have pages of 20. **View purchases** on a customer or medicine opens its purchase history. **Reports** provides the complete purchase list. Purchase details include recorded supplies, corrections and cancellation history. **View current supplies** on a customer gathers medicine coverage, run-out dates and reminder states in one place, separating future-starting supplies from today’s coverage.
 
 ## Purchases and supplies
 

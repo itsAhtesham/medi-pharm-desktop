@@ -1,5 +1,5 @@
 import { test, expect, _electron as electron, type ElectronApplication } from '@playwright/test';
-import { mkdtemp, rm, readFile, readdir, copyFile } from 'node:fs/promises';
+import { mkdtemp, rm, readFile, readdir, copyFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
@@ -117,6 +117,7 @@ test('renderer is sandboxed, remote requests are blocked and inputs are validate
     [
       'exportCsv',
       'customerSupplies',
+      'dashboard',
       'businessQuery',
       'businessSave',
       'purchasePreview',
@@ -266,7 +267,7 @@ test('lifecycle listeners unsubscribe and navigation works by keyboard', async (
     ),
   ).toEqual([]);
   await page.getByRole('button', { name: 'Overview', exact: true }).focus();
-  for (const section of ['Customers', 'Medicines', 'Purchases', 'Follow-ups', 'History']) {
+  for (const section of ['Customers', 'Medicines', 'Purchases', 'Follow-ups', 'Reports']) {
     await page.keyboard.press('Tab');
     await page.keyboard.press('Enter');
     await expect(page.getByRole('heading', { name: section, exact: true })).toBeVisible();
@@ -745,5 +746,148 @@ test('current supplies and native CSV exports preserve filters, history and exis
     await expect(page.locator('.supply-report-row')).toHaveCount(2);
   } finally {
     await rm(output, { recursive: true, force: true });
+  }
+});
+
+test('dashboard quick actions preserve drafts, show saved totals and fit desktop sizes and zoom', async () => {
+  const page = await launch();
+  await setup(page);
+  const quick = page.getByRole('complementary', { name: 'Quick actions' });
+  await quick.getByRole('button', { name: 'New customer', exact: true }).click();
+  await page.getByLabel('Customer name', { exact: true }).fill('Dashboard Customer');
+  await page.getByLabel('Phone', { exact: true }).fill('9876543210');
+  await expect(page.getByRole('button', { name: 'Overview', exact: true })).toBeDisabled();
+  await page.getByRole('button', { name: 'Lock workspace' }).click();
+  expect(await page.evaluate(() => window.mediPharm.dashboard())).toMatchObject({
+    ok: false,
+    code: 'NOT_READY',
+  });
+  await login(page);
+  await expect(page.getByLabel('Customer name', { exact: true })).toHaveValue('Dashboard Customer');
+  await page.getByRole('button', { name: 'Save customer', exact: true }).click();
+  await page.getByRole('button', { name: 'Overview', exact: true }).click();
+  await expect(page.getByTestId('customers-count')).toHaveText('1');
+  await quick.getByRole('button', { name: 'New medicine', exact: true }).click();
+  await page.getByLabel('Medicine name', { exact: true }).fill('Dashboard Medicine');
+  await page.getByRole('button', { name: 'Save medicine', exact: true }).click();
+  await page.getByRole('button', { name: 'Overview', exact: true }).click();
+  await expect(page.getByTestId('medicines-count')).toHaveText('1');
+  await quick.getByRole('button', { name: 'Record purchase', exact: true }).click();
+  await expect(page.getByLabel('Purchase date', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Discard draft', exact: true }).click();
+  await page.getByRole('button', { name: 'Overview', exact: true }).click();
+  await page.evaluate(async () => {
+    const api = window.mediPharm;
+    const customers = await api.businessQuery({ kind: 'customers' }),
+      medicines = await api.businessQuery({ kind: 'medicines' });
+    if (!customers.ok || !medicines.ok) throw new Error('Fixture catalogs unavailable');
+    const today = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Kolkata',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(new Date());
+    const medicineId = medicines.data.medicines[0].id;
+    const draft = {
+      id: null,
+      expectedVersion: null,
+      customerId: customers.data.customers[0].id,
+      date: today,
+      notes: 'Dashboard example',
+      reason: '',
+      items: [{ medicineId, quantity: '10', unit: 'tablets' as const }],
+      supplies: [
+        {
+          medicineId,
+          start: today,
+          days: 1,
+          mode: 'replace' as const,
+          remaining: null,
+          reminder: true,
+          manualDate: null,
+          confirmLate: false,
+        },
+      ],
+    };
+    const preview = await api.purchasePreview(draft);
+    if (!preview.ok) throw new Error(preview.message);
+    const saved = await api.businessSave({
+      ...draft,
+      kind: 'purchase',
+      requestId: crypto.randomUUID(),
+      expectedRevision: preview.data.revision,
+    });
+    if (!saved.ok) throw new Error(saved.message);
+  });
+  await page.getByRole('button', { name: 'Refresh dashboard' }).click();
+  await expect(page.getByTestId('purchases-count')).toHaveText('1');
+  await expect(page.getByTestId('ending-count')).toHaveText('1');
+  await expect(page.getByRole('img', { name: /Active purchase counts/ })).toBeVisible();
+  await page.locator('#ending-panel').getByRole('button', { name: 'Dashboard Customer' }).click();
+  await expect(page.getByRole('region', { name: 'Current medicine supplies' })).toContainText(
+    'Dashboard Medicine',
+  );
+  await page.getByRole('button', { name: 'Overview', exact: true }).click();
+  await quick.getByRole('button', { name: 'Due follow-ups', exact: true }).click();
+  await expect(page.getByLabel('Follow-up view')).toHaveValue('due');
+  await expect(page.locator('.follow-row')).toContainText('Dashboard Medicine');
+  await page.getByRole('button', { name: 'Overview', exact: true }).click();
+  await quick.getByRole('button', { name: 'Create backup', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Encrypted backups & restore' })).toBeVisible();
+  await configureBackups(page);
+  await page.getByRole('button', { name: 'Overview', exact: true }).click();
+  await quick.getByRole('button', { name: 'Create backup', exact: true }).click();
+  await expect(page.getByRole('status')).toContainText('Encrypted backup created and verified.');
+  await expect(page.getByLabel('Storage status')).toContainText('Last verified backup:');
+  for (const [width, height, zoom] of [
+    [1920, 1080, 1],
+    [1366, 768, 1],
+    [1366, 768, 1.25],
+    [1366, 768, 1.5],
+  ]) {
+    const contentWidth = await app!.evaluate(
+      ({ BrowserWindow }, size) => {
+        const w = BrowserWindow.getAllWindows()[0];
+        w.setSize(size[0], size[1]);
+        w.webContents.setZoomFactor(size[2]);
+        return w.getContentBounds().width;
+      },
+      [width, height, zoom],
+    );
+    await expect
+      .poll(() =>
+        page.evaluate(() => Math.abs(window.innerWidth - document.documentElement.clientWidth)),
+      )
+      .toBeLessThanOrEqual(1);
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+    ).toBe(true);
+    expect(await page.locator('.main-layout').evaluate((e) => e.scrollWidth <= e.clientWidth)).toBe(
+      true,
+    );
+    await expect
+      .poll(() => page.evaluate(() => window.innerWidth))
+      .toBeCloseTo(contentWidth / zoom, 0);
+    await expect(page.getByTestId('customers-count')).toBeVisible();
+    for (const selector of ['.dashboard-metrics', '.header-lock', '.status-bar']) {
+      expect(
+        await page
+          .locator(selector)
+          .evaluate((e) => e.getBoundingClientRect().right <= window.innerWidth + 1),
+      ).toBe(true);
+    }
+    // Native capture respects Electron zoom; CDP page screenshots crop zoomed windows.
+    const png = await app!.evaluate(async ({ BrowserWindow }) =>
+      (await BrowserWindow.getAllWindows()[0].webContents.capturePage()).toPNG().toString('base64'),
+    );
+    await writeFile(`test-results/dashboard-${width}-${zoom}.png`, Buffer.from(png, 'base64'));
+    if (zoom === 1.5) {
+      await page.getByRole('button', { name: 'Toggle workspace shortcuts' }).click();
+      await expect(page.getByRole('complementary', { name: 'Workspace shortcuts' })).toBeVisible();
+      await page.getByRole('button', { name: 'Toggle workspace shortcuts' }).click();
+    }
+    await page.getByRole('button', { name: 'Customers', exact: true }).click();
+    await expect(page.getByRole('button', { name: 'Add customer', exact: true })).toBeVisible();
+    await page.getByRole('button', { name: 'Overview', exact: true }).click();
   }
 });

@@ -6,16 +6,19 @@ import { BackupPanel } from './backup-panel';
 import { BusinessWorkspace } from './business-workspace';
 import { ExportSettings } from './reports';
 
-const sections = [
-  'Overview',
-  'Customers',
-  'Medicines',
-  'Purchases',
-  'Follow-ups',
-  'History',
-  'Settings',
-] as const;
-type Section = (typeof sections)[number];
+import { sections, type Section, type NavigationIntent, type Navigate } from './navigation';
+import { Dashboard } from './dashboard';
+import { Icon, type IconName } from './icons';
+import type { BackupStatus } from '../contracts/backup';
+const sectionIcons: Record<Section, IconName> = {
+  Overview: 'home',
+  Customers: 'users',
+  Medicines: 'pill',
+  Purchases: 'bag',
+  'Follow-ups': 'bell',
+  Reports: 'chart',
+  Settings: 'settings',
+};
 type Run = <T>(
   action: () => Promise<Result<T>>,
   message?: string | ((value: T) => string),
@@ -289,6 +292,9 @@ function PasswordForm({ busy, run }: { busy: boolean; run: Run }) {
 function App() {
   const [businessDirty, setBusinessDirty] = useState(false);
   const [businessReset, setBusinessReset] = useState(0);
+  const [intent, setIntent] = useState<NavigationIntent | null>(null);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [backup, setBackup] = useState<BackupStatus | null>(null);
   const [section, setSection] = useState<Section>('Overview');
   const [status, setStatus] = useState<WorkspaceStatus | null>(null);
   const [error, setError] = useState('');
@@ -298,6 +304,10 @@ function App() {
   const [pending, setPending] = useState<UpdatePharmacy | null>(null);
   const [lifecycle, setLifecycle] = useState<Lifecycle | null>(null);
   const lifecycleRef = useRef<Lifecycle | null>(null);
+  const contentRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    contentRef.current?.scrollTo({ top: 0 });
+  }, [section, intent]);
   const ready = lifecycle?.state === 'ready' || lifecycle?.state === 'maintenance';
   const busy = running || lifecycle?.state === 'maintenance';
   const restored = (backupCreated: boolean) => {
@@ -317,9 +327,13 @@ function App() {
   async function refresh() {
     const revision = lifecycleRef.current?.revision;
     if (lifecycleRef.current?.state !== 'ready') return;
-    const result = await window.mediPharm.status();
+    const [result, backupResult] = await Promise.all([
+      window.mediPharm.status(),
+      window.mediPharm.backupStatus(),
+    ]);
     if (lifecycleRef.current?.revision !== revision || lifecycleRef.current?.state !== 'ready')
       return;
+    if (backupResult.ok) setBackup(backupResult.data);
     if (result.ok) setStatus(result.data);
     else setError(result.message);
   }
@@ -330,6 +344,7 @@ function App() {
         return;
       if (next.state === 'maintenance' && next.operation === 'restore') {
         setBusinessReset((value) => value + 1);
+        setIntent(null);
         setBusinessDirty(false);
         setDraft(null);
         setPending(null);
@@ -339,7 +354,10 @@ function App() {
       setError('');
       setMessage('');
       if (next.state === 'ready') void refresh();
-      else if (next.state !== 'maintenance') setStatus(null);
+      else if (next.state !== 'maintenance') {
+        setStatus(null);
+        setBackup(null);
+      }
     };
     const unsubscribe = window.mediPharm.onLifecycle(accept);
     const sync = () => {
@@ -402,249 +420,316 @@ function App() {
       return result;
     }, 'Pharmacy details saved on this computer.');
   }
+  const navigate: Navigate = (next, action, id) => {
+    if (!ready || busy || businessDirty) return;
+    setSection(next);
+    setIntent(action ? { key: crypto.randomUUID(), action, id } : null);
+    setSidebarOpen(false);
+  };
+  const createBackup = () => {
+    if (!backup?.configured || !backup.unlocked) {
+      navigate('Settings');
+      return;
+    }
+    void run(() => window.mediPharm.backupCreate(), 'Encrypted backup created and verified.');
+  };
+  const shortcuts: {
+    label: string;
+    section: Section;
+    action?: NavigationIntent['action'];
+    icon: IconName;
+  }[] = [
+    { label: 'Customer directory', section: 'Customers', icon: 'users' },
+    { label: 'Register customer', section: 'Customers', action: 'newCustomer', icon: 'plus' },
+    { label: 'Medicine catalog', section: 'Medicines', icon: 'pill' },
+    { label: 'Enter purchase', section: 'Purchases', action: 'newPurchase', icon: 'bag' },
+    { label: 'Purchase history', section: 'Reports', icon: 'history' },
+    { label: 'Due reminders', section: 'Follow-ups', action: 'due', icon: 'bell' },
+    { label: 'Upcoming reminders', section: 'Follow-ups', action: 'scheduled', icon: 'clock' },
+    { label: 'All follow-up cycles', section: 'Follow-ups', action: 'all', icon: 'activity' },
+    { label: 'Backups & exports', section: 'Settings', icon: 'backup' },
+  ];
   return (
-    <div className="app-shell">
-      <aside className="sidebar">
+    <div className={`app-shell ${sidebarOpen ? 'sidebar-open' : ''}`}>
+      <header className="app-header">
         <div className="brand">
-          <div className="brand-mark" aria-hidden="true">
-            ✚
+          <div className="brand-mark">
+            <Icon name="activity" />
           </div>
           <div>
-            MediPharm<small>DESKTOP</small>
+            Medi<span>Pharm</span>
+            <small>DESKTOP · PATIENT CARE</small>
           </div>
         </div>
-        <div className="workspace-label">YOUR WORKSPACE</div>
-        <nav aria-label="Main navigation">
-          {sections.map((item, index) => (
-            <button
-              key={item}
-              disabled={!ready || busy || businessDirty}
-              aria-current={section === item ? 'page' : undefined}
-              onClick={() => setSection(item)}
-            >
-              <span className="nav-number" aria-hidden="true">
-                {String(index + 1).padStart(2, '0')}
+        <div className="header-pharmacy">
+          {ready ? (status?.pharmacy.name ?? 'Your pharmacy') : 'Your local pharmacy workspace'}
+        </div>
+        <div className="header-actions">
+          <span className="local-indicator">
+            <span className="status-dot" />
+            {ready ? 'Local database' : 'Local access'}
+          </span>
+          {ready && (
+            <>
+              <span className="owner-label">
+                <Icon name="shield" />
+                {status?.identifier ?? 'Owner'}
               </span>
-              {item}
-            </button>
-          ))}
-        </nav>
-        <div className="sidebar-bottom">
-          <span className="status-dot" />
-          Offline by design
-          <small>
-            Windows 10 & 11
-            <br />
-            Development preview
-          </small>
-        </div>
-      </aside>
-      <div className="main-layout">
-        <header className="topbar">
-          <div>
-            {ready ? (status?.pharmacy.name ?? 'Your pharmacy') : 'Local owner access'}{' '}
-            <span>/</span> <strong>{ready ? section : 'MediPharm'}</strong>
-          </div>
-          <div className="header-actions">
-            <span className="prototype-badge">DEVELOPMENT PREVIEW</span>
-            {ready && (
               <button
-                className="secondary"
+                className="header-lock"
                 disabled={busy}
                 onClick={() => void run(() => window.mediPharm.logout())}
               >
+                <Icon name="lock" />
                 Lock workspace
               </button>
-            )}
-          </div>
-        </header>
-        <main>
-          <div className="notice">
-            <span aria-hidden="true">i</span>
-            <p>
-              <strong>Development preview.</strong> Customer, medicine, purchase and follow-up
-              workflows are available for testing. Windows release checks are still pending. Use
-              test data for now.
-            </p>
-          </div>
-          {lifecycle?.state === 'maintenance' && (
-            <div role="status" className="feedback success">
-              {lifecycle.message}
-            </div>
-          )}
-          {error && (
-            <div role="alert" className="feedback error">
-              {error}
-            </div>
-          )}
-          {message && (
-            <div role="status" className="feedback success">
-              {message}
-            </div>
-          )}
-          {lifecycle?.state === 'recoveryRequired' ? (
-            <>
-              <section role="alert" className="card">
-                <h1>Local storage needs attention</h1>
-                <p>{lifecycle.message}</p>
-                <button
-                  className="primary"
-                  disabled={busy}
-                  onClick={() => void run(() => window.mediPharm.restartStorage())}
-                >
-                  Restart storage
-                </button>
-              </section>
-
-              <BackupPanel fresh disabled={busy} onRestored={restored} />
             </>
-          ) : lifecycle?.state === 'setupRequired' || lifecycle?.state === 'locked' ? (
-            <>
-              <AccessForm
-                key={lifecycle.state}
-                setup={lifecycle.state === 'setupRequired'}
-                busy={busy}
-                run={run}
-              />
-              {lifecycle.state === 'setupRequired' && (
-                <BackupPanel fresh disabled={busy} onRestored={restored} />
+          )}
+        </div>
+      </header>
+      <nav className="top-navigation" aria-label="Main navigation">
+        {sections.map((item) => (
+          <button
+            key={item}
+            disabled={!ready || busy || businessDirty}
+            aria-current={section === item ? 'page' : undefined}
+            onClick={() => navigate(item)}
+          >
+            <Icon name={sectionIcons[item]} />
+            {item}
+          </button>
+        ))}
+      </nav>
+      <div className="workspace-body">
+        <aside className="sidebar" aria-label="Workspace shortcuts">
+          <div className="sidebar-title">
+            <Icon name={sectionIcons[section]} />
+            {ready ? section : 'MediPharm'}
+          </div>
+          {shortcuts.map((item, index) => (
+            <React.Fragment key={item.label}>
+              {(index === 0 || index === 5 || index === 8) && (
+                <h2 className="sidebar-group">
+                  {index === 0 ? 'CUSTOMER CARE' : index === 5 ? 'REMINDERS' : 'WORKSPACE'}
+                </h2>
               )}
-            </>
-          ) : !ready ? (
-            <p role="status">{lifecycle?.message ?? 'Starting your local workspace…'}</p>
-          ) : (
-            <>
-              <div className="page-heading">
-                <div>
-                  <p className="eyebrow">YOUR PHARMACY, LOCALLY</p>
-                  <h1>{section === 'Overview' ? 'Your pharmacy today.' : section}</h1>
-                  <p className="subtitle">
-                    {section === 'Overview'
-                      ? 'Review customer reminders and record today’s supplies.'
-                      : section === 'Settings'
-                        ? 'Manage your pharmacy and local owner access.'
-                        : 'Saved locally on this computer. Business dates use Asia/Kolkata.'}
-                  </p>
-                </div>
+              <button
+                disabled={!ready || busy || businessDirty}
+                onClick={() => navigate(item.section, item.action)}
+              >
+                <Icon name={item.icon} />
+                {item.label}
+              </button>
+            </React.Fragment>
+          ))}
+          <div className="sidebar-bottom">
+            <Icon name="shield" />
+            <strong>Offline by design</strong>
+            <p>One pharmacy. One local owner.</p>
+            <small>
+              Windows 10 & 11
+              <br />
+              Development preview
+            </small>
+          </div>
+        </aside>
+        <div className="main-layout" ref={contentRef}>
+          <div className="workspace-heading">
+            <button
+              className="sidebar-toggle secondary"
+              aria-label="Toggle workspace shortcuts"
+              aria-expanded={sidebarOpen}
+              onClick={() => setSidebarOpen(!sidebarOpen)}
+            >
+              <Icon name="menu" />
+            </button>
+            <Icon name={sectionIcons[section]} />
+            <h1>{ready ? (section === 'Overview' ? 'Dashboard' : section) : 'Owner access'}</h1>
+            <span className="prototype-badge">DEVELOPMENT PREVIEW</span>
+          </div>
+          <main>
+            <div className="notice">
+              <span aria-hidden="true">i</span>
+              <p>
+                <strong>Development preview.</strong> Customer, medicine, purchase and follow-up
+                workflows are available for testing. Windows release checks are still pending. Use
+                test data for now.
+              </p>
+            </div>
+            {lifecycle?.state === 'maintenance' && (
+              <div role="status" className="feedback success">
+                {lifecycle.message}
               </div>
-              {!status ? (
-                <p role="status">Loading pharmacy details…</p>
-              ) : section === 'Overview' ? (
-                <>
-                  <div className="summary-grid">
-                    {(['customers', 'medicines', 'purchases'] as const).map((kind) => (
-                      <article className="summary-card" key={kind}>
-                        <p>{kind[0].toUpperCase() + kind.slice(1)}</p>
-                        <strong data-testid={`${kind}-count`}>{status[kind]}</strong>
-                        <span>No sample records are imported</span>
-                      </article>
-                    ))}
-                  </div>
-                  <section className="card">
-                    <h2>Welcome to {status.pharmacy.name}</h2>
-                    <p className="body-copy">
-                      You are signed in as <strong>{status.identifier}</strong>. Customer records,
-                      medicine supplies and follow-ups are available in the workspace.
-                    </p>
-                    <button
-                      className="primary"
-                      disabled={businessDirty || busy}
-                      onClick={() => setSection('Settings')}
-                    >
-                      Open pharmacy settings
-                    </button>
-                  </section>
-                </>
-              ) : section === 'Settings' ? (
-                <>
-                  <div className="content-grid">
-                    <section className="card">
-                      <h2>Pharmacy details</h2>
-                      <p className="body-copy">Business dates use Asia/Kolkata.</p>
-                      <form
-                        onSubmit={(e) => {
-                          e.preventDefault();
-                          void savePharmacy();
-                        }}
-                      >
-                        <label htmlFor="settings-name">Pharmacy name</label>
-                        <input
-                          id="settings-name"
-                          maxLength={120}
-                          required
-                          disabled={busy || Boolean(pending)}
-                          value={pending?.name ?? draft?.name ?? status.pharmacy.name}
-                          onChange={(e) =>
-                            setDraft({
-                              name: e.target.value,
-                              expectedVersion: draft?.expectedVersion ?? status.pharmacy.version,
-                            })
-                          }
-                        />
-                        <button
-                          type="submit"
-                          className="primary"
-                          disabled={busy || !draft || !draft.name.trim()}
-                        >
-                          {pending ? 'Retry same save' : 'Save pharmacy details'}
-                        </button>
-                      </form>
-                      {draft && !pending && (
-                        <button
-                          className="text-button"
-                          disabled={busy}
-                          onClick={() => {
-                            setDraft(null);
-                            setError('');
-                            void refresh();
+            )}
+            {error && (
+              <div role="alert" className="feedback error">
+                {error}
+              </div>
+            )}
+            {message && (
+              <div role="status" className="feedback success">
+                {message}
+              </div>
+            )}
+            {lifecycle?.state === 'recoveryRequired' ? (
+              <>
+                <section role="alert" className="card">
+                  <h1>Local storage needs attention</h1>
+                  <p>{lifecycle.message}</p>
+                  <button
+                    className="primary"
+                    disabled={busy}
+                    onClick={() => void run(() => window.mediPharm.restartStorage())}
+                  >
+                    Restart storage
+                  </button>
+                </section>
+
+                <BackupPanel fresh disabled={busy} onRestored={restored} />
+              </>
+            ) : lifecycle?.state === 'setupRequired' || lifecycle?.state === 'locked' ? (
+              <>
+                <AccessForm
+                  key={lifecycle.state}
+                  setup={lifecycle.state === 'setupRequired'}
+                  busy={busy}
+                  run={run}
+                />
+                {lifecycle.state === 'setupRequired' && (
+                  <BackupPanel fresh disabled={busy} onRestored={restored} />
+                )}
+              </>
+            ) : !ready ? (
+              <p role="status">{lifecycle?.message ?? 'Starting your local workspace…'}</p>
+            ) : (
+              <>
+                {!status ? (
+                  <p role="status">Loading pharmacy details…</p>
+                ) : section === 'Overview' ? (
+                  <Dashboard
+                    enabled={!busy && !businessDirty}
+                    revision={status.revision}
+                    pharmacy={status.pharmacy.name}
+                    onNavigate={navigate}
+                    onBackup={createBackup}
+                  />
+                ) : section === 'Settings' ? (
+                  <>
+                    <div className="content-grid">
+                      <section className="card">
+                        <h2>Pharmacy details</h2>
+                        <p className="body-copy">Business dates use Asia/Kolkata.</p>
+                        <form
+                          onSubmit={(e) => {
+                            e.preventDefault();
+                            void savePharmacy();
                           }}
                         >
-                          Use saved details
-                        </button>
-                      )}
-                      {pending && (
-                        <p className="body-copy">
-                          This submission is kept unchanged until the save is confirmed. Sign in
-                          again if needed, then retry the same save.
-                        </p>
-                      )}
-                    </section>
-                    <PasswordForm busy={busy} run={run} />
-                  </div>
-                  <ExportSettings disabled={busy} />
-                  <BackupPanel disabled={busy} onRestored={restored} />
-                </>
-              ) : null}
-            </>
-          )}
-          <div hidden={!ready || section === 'Settings'}>
-            <BusinessWorkspace
-              key={businessReset}
-              section={section}
-              active={ready && section !== 'Settings'}
-              enabled={lifecycle?.state === 'ready' && !busy}
-              epoch={lifecycle?.revision ?? 0}
-              onDirty={setBusinessDirty}
-              onCommit={() => void refresh()}
-            />
-          </div>
-          <footer>
-            <span>Local data · No cloud account</span>
-            <button
-              className="text-button"
-              disabled={busy}
-              onClick={() =>
-                void run(
-                  () => window.mediPharm.exportDiagnostics(),
-                  (result) =>
-                    result.saved ? 'Diagnostics saved.' : 'Diagnostics export cancelled.',
-                )
-              }
-            >
-              Save diagnostics
-            </button>
-          </footer>
-        </main>
+                          <label htmlFor="settings-name">Pharmacy name</label>
+                          <input
+                            id="settings-name"
+                            maxLength={120}
+                            required
+                            disabled={busy || Boolean(pending)}
+                            value={pending?.name ?? draft?.name ?? status.pharmacy.name}
+                            onChange={(e) =>
+                              setDraft({
+                                name: e.target.value,
+                                expectedVersion: draft?.expectedVersion ?? status.pharmacy.version,
+                              })
+                            }
+                          />
+                          <button
+                            type="submit"
+                            className="primary"
+                            disabled={busy || !draft || !draft.name.trim()}
+                          >
+                            {pending ? 'Retry same save' : 'Save pharmacy details'}
+                          </button>
+                        </form>
+                        {draft && !pending && (
+                          <button
+                            className="text-button"
+                            disabled={busy}
+                            onClick={() => {
+                              setDraft(null);
+                              setError('');
+                              void refresh();
+                            }}
+                          >
+                            Use saved details
+                          </button>
+                        )}
+                        {pending && (
+                          <p className="body-copy">
+                            This submission is kept unchanged until the save is confirmed. Sign in
+                            again if needed, then retry the same save.
+                          </p>
+                        )}
+                      </section>
+                      <PasswordForm busy={busy} run={run} />
+                    </div>
+                    <ExportSettings disabled={busy} />
+                    <BackupPanel disabled={busy} onRestored={restored} onStatusChange={setBackup} />
+                  </>
+                ) : null}
+              </>
+            )}
+            <div hidden={!ready || section === 'Settings' || section === 'Overview'}>
+              <BusinessWorkspace
+                key={businessReset}
+                section={section}
+                active={ready && section !== 'Settings' && section !== 'Overview'}
+                intent={intent}
+                enabled={lifecycle?.state === 'ready' && !busy}
+                epoch={lifecycle?.revision ?? 0}
+                onDirty={setBusinessDirty}
+                onCommit={() => void refresh()}
+              />
+            </div>
+            <footer>
+              <span>Local data · No cloud account</span>
+              <button
+                className="text-button"
+                disabled={busy}
+                onClick={() =>
+                  void run(
+                    () => window.mediPharm.exportDiagnostics(),
+                    (result) =>
+                      result.saved ? 'Diagnostics saved.' : 'Diagnostics export cancelled.',
+                  )
+                }
+              >
+                Save diagnostics
+              </button>
+            </footer>
+          </main>
+        </div>
+      </div>
+      <div className="status-bar" aria-label="Storage status">
+        <span>
+          <span className="status-dot" />
+          {lifecycle?.state === 'ready'
+            ? 'Local database ready'
+            : lifecycle?.state === 'maintenance'
+              ? 'Storage operation in progress'
+              : lifecycle?.state === 'locked'
+                ? 'Workspace locked'
+                : 'Local owner access'}
+        </span>
+        <span>{ready ? status?.pharmacy.name : 'MediPharm Desktop'}</span>
+        <span className="backup-indicator">
+          {!ready
+            ? 'Offline workspace'
+            : !backup
+              ? 'Checking backup status…'
+              : !backup.configured
+                ? 'Backups not configured'
+                : !backup.localLast
+                  ? 'No verified backup yet'
+                  : `Last verified backup: ${new Date(backup.localLast).toLocaleString()}`}
+          {ready && backup?.externalPending ? ' · External copy pending' : ''}
+        </span>
       </div>
     </div>
   );

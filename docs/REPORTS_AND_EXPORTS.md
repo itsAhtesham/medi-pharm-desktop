@@ -12,7 +12,7 @@ Cancelling or correcting purchases changes the report through the existing chain
 
 ## Export scope
 
-Use **Export CSV** on Customers, Medicines, Purchases, History or Follow-ups. This exports all records matching the displayed search/status filters across all pages. Follow-ups also offer **Export matching follow-up history**; its filters select cycles, then include their events.
+Use **Export CSV** on Customers, Medicines, Purchases, Reports or Follow-ups. This exports all records matching the displayed search/status filters across all pages. Follow-ups also offer **Export matching follow-up history**; its filters select cycles, then include their events.
 
 Use **Settings → CSV exports** for the whole dataset, including archived catalogue entries, cancelled purchases and all reminder cycles.
 

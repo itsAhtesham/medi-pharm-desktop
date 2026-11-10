@@ -11,6 +11,7 @@ The app now has an **offline pharmacy workflow development preview**. Windows re
 Implemented:
 
 - Electron window, bundled React interface, validated IPC, and service-owned SQLite.
+- Blue desktop shell, horizontal navigation, grouped shortcuts, live dashboard metrics and purchase-count chart, compact record tables, and responsive quick actions.
 - Explicit empty-pharmacy setup, local owner login, lock/logout, password changes, and rotating offline recovery codes.
 - Salted, versioned scrypt hashes; persistent failed-login throttling; eight-hour in-memory sessions checked by the service.
 - Reviewed initial schema, migration checksum ledger, dataset identity, strict constraints and health checks.
@@ -64,7 +65,7 @@ A missing/corrupt database or mismatched migration ledger opens recovery mode. N
 
 This preview caps archives at **64 MiB** and retains old live generations/safety archives for inspection. Windows filesystem/DPAPI verification, large-data streaming, and future-schema upgrade rehearsals remain release gates. Existing unsupported schemas are never upgraded automatically. Use synthetic data until the release checks and owner walkthrough are complete.
 
-See [reports and CSV exports](docs/REPORTS_AND_EXPORTS.md) and [the business workflow walkthrough](docs/BUSINESS_WORKFLOWS.md) for customer, medicine, purchase and follow-up entry.
+See [the desktop interface guide](docs/UI_DESIGN.md), [reports and CSV exports](docs/REPORTS_AND_EXPORTS.md) and [the business workflow walkthrough](docs/BUSINESS_WORKFLOWS.md) for customer, medicine, purchase and follow-up entry.
 
 ## Test on Windows
 
@@ -76,6 +77,8 @@ The current installer configuration is set up to produce an **unsigned preview**
 
 | Document | Purpose |
 | --- | --- |
+| [UI verification](docs/verification/DESKTOP_UI.md) | Dashboard tests, native screenshots and remaining Windows layout checks |
+| [Desktop interface](docs/UI_DESIGN.md) | Navigation, real-data dashboard definitions and responsive layout |
 | [Reports/export verification](docs/verification/REPORTS_AND_EXPORTS.md) | Current supply coverage, CSV publication and packaged export evidence |
 | [Business workflow verification](docs/verification/BUSINESS_WORKFLOWS.md) | Transaction, reconciliation, populated recovery and packaged workflow evidence |
 | [Platform decisions](docs/PLATFORM_DECISIONS.md) | Confirmed scope, prototype identity, pinned toolchain, pending hardware decisions |

@@ -1,3 +1,4 @@
+import { dashboardSchema } from '../contracts/dashboard';
 import {
   csvResultSchema,
   supplyResultSchema,
@@ -72,6 +73,7 @@ async function invoke<T extends z.ZodType>(
   };
 }
 const api: DesktopApi = Object.freeze({
+  dashboard: () => invoke(channels.dashboard, dashboardSchema),
   exportCsv: (input: CsvInput) => invoke(channels.exportCsv, csvResultSchema, input),
   customerSupplies: (input: SupplyQuery) =>
     invoke(channels.customerSupplies, supplyResultSchema, input),
