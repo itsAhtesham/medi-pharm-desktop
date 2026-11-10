@@ -55,7 +55,7 @@ export function Dashboard({
       label: 'New medicine',
       icon: 'pill',
       run: () => onNavigate('Medicines', 'newMedicine'),
-      color: 'green',
+      color: 'teal',
     },
     {
       label: 'Record purchase',
@@ -69,7 +69,7 @@ export function Dashboard({
       run: () => onNavigate('Follow-ups', 'due'),
       color: 'amber',
     },
-    { label: 'Export data', icon: 'download', run: () => onNavigate('Settings'), color: 'cyan' },
+    { label: 'Export data', icon: 'download', run: () => onNavigate('Settings'), color: 'indigo' },
     { label: 'Create backup', icon: 'backup', run: onBackup, color: 'blue' },
   ];
   return (
@@ -103,7 +103,7 @@ export function Dashboard({
               />
               <Metric
                 icon="bag"
-                color="green"
+                color="purple"
                 title="Purchases today"
                 value={data.purchasesToday}
                 note="Active purchases · excludes cancelled"
@@ -113,7 +113,7 @@ export function Dashboard({
               />
               <Metric
                 icon="pill"
-                color="purple"
+                color="teal"
                 title="Ending within 5 days"
                 value={data.endingSupplies}
                 note={`${data.endingCustomers} ${data.endingCustomers === 1 ? 'customer' : 'customers'} · medicine supplies`}

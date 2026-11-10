@@ -83,10 +83,30 @@ const paths = {
   check: <path d="m4 12 5 5L20 6" />,
 };
 export type IconName = keyof typeof paths;
+// Soft fills sit underneath crisp outlines, preserving recognisable shapes at small sizes.
+const tones: Partial<Record<IconName, React.ReactNode>> = {
+  home: <path d="M5 10 12 4l7 6v11H5Z" />,
+  users: (
+    <>
+      <circle cx="9" cy="7" r="3" />
+      <path d="M3 21v-3a6 6 0 0 1 12 0v3Z" />
+    </>
+  ),
+  pill: <path d="m8 8 4-4a5.7 5.7 0 0 1 8 8l-4 4Z" />,
+  bag: <path d="M4 7h16l1 14H3Z" />,
+  bell: <path d="M5 17h14l-2-3V9a5 5 0 0 0-10 0v5Z" />,
+  clock: <circle cx="12" cy="12" r="9" />,
+  chart: <path d="M6 11h3v8H6ZM11 7h3v12h-3ZM16 4h3v15h-3Z" />,
+  history: <circle cx="12" cy="12" r="8" />,
+  settings: <path d="m9 3-1 3-3 1-2 4 2 2v4l4 3 3-1 3 1 4-3v-4l2-2-2-4-3-1-1-3Z" />,
+  backup: <path d="M4 13h16v7H4Z" />,
+  download: <path d="M4 16h16v5H4Z" />,
+  shield: <path d="m12 2 9 4v6c0 6-9 10-9 10S3 18 3 12V6Z" />,
+};
 export function Icon({ name, className = '' }: { name: IconName; className?: string }) {
   return (
     <svg
-      className={`icon ${className}`}
+      className={`icon icon-${name} ${className}`}
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
@@ -96,6 +116,9 @@ export function Icon({ name, className = '' }: { name: IconName; className?: str
       aria-hidden="true"
       focusable="false"
     >
+      <g fill="currentColor" fillOpacity="0.18" stroke="none">
+        {tones[name]}
+      </g>
       {paths[name]}
     </svg>
   );

@@ -876,6 +876,14 @@ test('dashboard quick actions preserve drafts, show saved totals and fit desktop
           .evaluate((e) => e.getBoundingClientRect().right <= window.innerWidth + 1),
       ).toBe(true);
     }
+    // Quick actions can scroll the workspace; frame each overview capture from the top.
+    await page.locator('.main-layout').evaluate(async (element) => {
+      if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+      element.scrollTop = 0;
+      await new Promise<void>((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+      );
+    });
     // Native capture respects Electron zoom; CDP page screenshots crop zoomed windows.
     const png = await app!.evaluate(async ({ BrowserWindow }) =>
       (await BrowserWindow.getAllWindows()[0].webContents.capturePage()).toPNG().toString('base64'),

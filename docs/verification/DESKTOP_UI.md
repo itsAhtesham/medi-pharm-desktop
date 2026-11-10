@@ -26,3 +26,7 @@ These use Electron's native `capturePage`; CDP page screenshots can crop the zoo
 ## Remaining platform checks
 
 Linux packaging and Electron zoom checks do not certify Windows display scaling, native date/save controls, DPAPI, filesystem behavior, installer execution or Windows 10 compatibility. Follow the dashboard section of [Windows testing](../WINDOWS_TESTING.md) on the Windows 11 laptop and a Windows 10 test system. Existing signing, migration, archive-size and load-verification release gates remain open.
+
+## Colour refinement
+
+The subsequent colour pass adds workflow-specific navigation/editor accents, two-tone SVG icons with coloured badges, soft card gradients and stronger dashboard accents. Neutral record tables and labelled statuses are retained. Lint, formatting, all TypeScript configurations and Linux packaging pass; the existing packaged keyboard-navigation and dashboard/size/zoom journeys pass (2 tests). No business or storage behavior changed in this pass.

@@ -491,6 +491,7 @@ function App() {
         {sections.map((item) => (
           <button
             key={item}
+            className={`section-${sectionIcons[item]}`}
             disabled={!ready || busy || businessDirty}
             aria-current={section === item ? 'page' : undefined}
             onClick={() => navigate(item)}
@@ -502,7 +503,7 @@ function App() {
       </nav>
       <div className="workspace-body">
         <aside className="sidebar" aria-label="Workspace shortcuts">
-          <div className="sidebar-title">
+          <div className={`sidebar-title section-${sectionIcons[section]}`}>
             <Icon name={sectionIcons[section]} />
             {ready ? section : 'MediPharm'}
           </div>
@@ -514,6 +515,7 @@ function App() {
                 </h2>
               )}
               <button
+                className={`section-${sectionIcons[item.section]}`}
                 disabled={!ready || busy || businessDirty}
                 onClick={() => navigate(item.section, item.action)}
               >
@@ -533,7 +535,7 @@ function App() {
             </small>
           </div>
         </aside>
-        <div className="main-layout" ref={contentRef}>
+        <div className={`main-layout section-${sectionIcons[section]}`} ref={contentRef}>
           <div className="workspace-heading">
             <button
               className="sidebar-toggle secondary"

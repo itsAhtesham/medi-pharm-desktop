@@ -2,6 +2,8 @@
 
 The interface follows the supplied pharmacy dashboard reference: navy branding and status bars, a horizontal navigation strip, pale-blue grouped shortcuts, pastel dashboard metrics, compact tables and a quick-action panel. It uses Segoe UI where available, bundled SVG icons and local styles; no external fonts, chart service or network requests are needed. Electron retains native window controls.
 
+The colour palette follows the workflow: customers use blue, medicines teal, purchases purple, follow-ups orange, and reports indigo. Navigation, editor accents, dashboard cards and quick actions share these colours. Icons combine soft fills with clear outlines and coloured badges. Tables retain neutral rows and explicit status labels; red remains reserved for errors, overdue statuses and destructive actions.
+
 ## Navigation
 
 - **Overview** opens the dashboard. Shortcuts create a customer, medicine or purchase directly in the existing editor. Due reminders open the due/overdue view; upcoming reminders open scheduled cycles.
