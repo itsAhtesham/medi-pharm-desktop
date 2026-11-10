@@ -1,5 +1,5 @@
 import { test, expect, _electron as electron, type ElectronApplication } from '@playwright/test';
-import { mkdtemp, rm, readFile } from 'node:fs/promises';
+import { mkdtemp, rm, readFile, readdir, copyFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
@@ -21,6 +21,8 @@ async function launch() {
     env: { ...process.env, MEDIPHARM_PREVIEW_HOME: root },
     timeout: 20_000,
   });
+  // Refuse an incompatible executable/profile before any fixture mutation.
+  expect(await app.evaluate(({ app }) => app.getPath('userData'))).toBe(path.join(root, 'runtime'));
   return app.firstWindow();
 }
 test.beforeEach(async () => {
@@ -41,6 +43,7 @@ test.afterEach(async () => {
 
 const password = 'local test passphrase';
 async function login(page: import('@playwright/test').Page, secret = password) {
+  await expect(page.getByRole('heading', { name: 'Welcome back' })).toBeVisible();
   await page.getByLabel('Owner identifier').fill('owner');
   await page.getByLabel('Password', { exact: true }).fill(secret);
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
@@ -112,6 +115,16 @@ test('renderer is sandboxed, remote requests are blocked and inputs are validate
   expect(isolated.node).toBe('undefined');
   expect(isolated.methods.sort()).toEqual(
     [
+      'openBackupFolder',
+      'backupStatus',
+      'backupConfigure',
+      'backupRotate',
+      'backupUnlock',
+      'backupCreate',
+      'backupExternal',
+      'restorePreview',
+      'restoreConfirm',
+      'restoreCancel',
       'status',
       'setup',
       'login',
@@ -310,4 +323,159 @@ test('second launch reuses the window and closing stops the database service', a
       }
     })
     .toBe(false);
+});
+
+const backupPassphrase = 'separate desktop backup phrase';
+async function configureBackups(page: import('@playwright/test').Page) {
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await page.getByLabel('New backup passphrase', { exact: true }).fill(backupPassphrase);
+  await page.getByLabel('Confirm backup passphrase', { exact: true }).fill(backupPassphrase);
+  await page.getByLabel('I have saved this backup passphrase separately').check();
+  await page.getByLabel('Remember securely on this computer', { exact: false }).uncheck();
+  await page.getByRole('button', { name: 'Set up encrypted backups' }).click();
+  await expect(page.getByRole('button', { name: 'Create encrypted backup' })).toBeEnabled();
+  await page.getByRole('button', { name: 'Create encrypted backup' }).click();
+  await expect(page.getByRole('status')).toContainText('Local encrypted backup verified');
+  return path.join(
+    root,
+    'backups',
+    (await readdir(path.join(root, 'backups'))).find((file) => file.endsWith('.mpbackup'))!,
+  );
+}
+
+test('encrypted backup, verified restore, safety copy and restored owner login work in the package', async () => {
+  const page = await launch();
+  await setup(page);
+  const filename = await configureBackups(page);
+  await page.getByLabel('Pharmacy name', { exact: true }).fill('Later pharmacy name');
+  await page.getByRole('button', { name: 'Save pharmacy details' }).click();
+  await expect(page.getByText('Pharmacy details saved on this computer.')).toBeVisible();
+  await app!.evaluate(({ dialog }, filename) => {
+    dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [filename] });
+    dialog.showMessageBox = async () => ({ response: 1, checkboxChecked: false });
+  }, filename);
+  await page.getByLabel('Passphrase for the archive').fill(backupPassphrase);
+  await page.getByRole('button', { name: 'Choose and verify backup' }).click();
+  await expect(page.getByRole('heading', { name: 'Verified: Test Pharmacy' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Restore this pharmacy' })).toBeDisabled();
+  await page.getByLabel('Type RESTORE to confirm replacement').fill('RESTORE');
+  await page.screenshot({ path: 'test-results/backup-restore-preview.png', fullPage: true });
+  await page.getByRole('button', { name: 'Restore this pharmacy' }).click();
+  await expect(page.getByRole('heading', { name: 'Welcome back' })).toBeVisible();
+  await login(page);
+  await expect(page.getByRole('heading', { name: 'Welcome to Test Pharmacy' })).toBeVisible();
+  const history = JSON.parse(await readFile(path.join(root, 'operations', 'backups.json'), 'utf8'));
+  expect(history.records.some((record: { kind: string }) => record.kind === 'safety')).toBe(true);
+});
+
+test('fresh profile restores a portable archive without the previous OS key and rejects a wrong passphrase', async () => {
+  let page = await launch();
+  await setup(page);
+  const filename = await configureBackups(page);
+  const saved = await mkdtemp(path.join(tmpdir(), 'medipharm-portable-desktop-'));
+  try {
+    const archive = path.join(saved, 'portable.mpbackup');
+    await copyFile(filename, archive);
+    await app!.close();
+    app = undefined;
+    await rm(root, { recursive: true, force: true });
+    root = await mkdtemp(path.join(tmpdir(), 'medipharm-fresh-desktop-'));
+    page = await launch();
+    await app!.evaluate(({ dialog }, filename) => {
+      dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [filename] });
+      dialog.showMessageBox = async () => ({ response: 1, checkboxChecked: false });
+    }, archive);
+    await page.getByLabel('Passphrase for the archive').fill('incorrect archive phrase');
+    await page.getByRole('button', { name: 'Choose and verify backup' }).click();
+    await expect(page.getByRole('alert')).toContainText('could not be opened');
+    await page.getByLabel('Passphrase for the archive').fill(backupPassphrase);
+    await page.getByRole('button', { name: 'Choose and verify backup' }).click();
+    await expect(page.getByRole('heading', { name: 'Verified: Test Pharmacy' })).toBeVisible();
+    await page.getByLabel('Type RESTORE to confirm replacement').fill('RESTORE');
+    await page.getByRole('button', { name: 'Restore this pharmacy' }).click();
+    await login(page);
+    await expect(page.getByRole('heading', { name: 'Welcome to Test Pharmacy' })).toBeVisible();
+  } finally {
+    await rm(saved, { recursive: true, force: true });
+  }
+});
+
+test('unavailable OS protection keeps the backup key in memory and requires unlocking after restart', async () => {
+  let page = await launch();
+  await setup(page);
+  await app!.evaluate(({ safeStorage }) => {
+    safeStorage.isAsyncEncryptionAvailable = async () => false;
+  });
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await page.getByLabel('New backup passphrase', { exact: true }).fill(backupPassphrase);
+  await page.getByLabel('Confirm backup passphrase', { exact: true }).fill(backupPassphrase);
+  await page.getByLabel('I have saved this backup passphrase separately').check();
+  await page.getByRole('button', { name: 'Set up encrypted backups' }).click();
+  await expect(page.getByText('Unlocked for this app session', { exact: false })).toBeVisible();
+  expect((await readdir(path.join(root, 'settings'))).includes('backup-key.protected')).toBe(false);
+  await app!.close();
+  app = undefined;
+  page = await launch();
+  await login(page);
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Create encrypted backup' })).toBeDisabled();
+  await page.getByLabel('Backup passphrase', { exact: true }).fill(backupPassphrase);
+  await page.getByLabel('Remember securely on this computer', { exact: false }).uncheck();
+  await page.getByRole('button', { name: 'Unlock backups' }).click();
+  await expect(page.getByRole('button', { name: 'Create encrypted backup' })).toBeEnabled();
+});
+
+test('recovery mode explicitly preserves a damaged installation while restoring a verified archive', async () => {
+  let page = await launch();
+  await setup(page);
+  const filename = await configureBackups(page);
+  await app!.close();
+  app = undefined;
+  await rm(path.join(root, 'data', 'live', 'medipharm.sqlite'));
+  page = await launch();
+  await expect(page.getByRole('heading', { name: 'Local storage needs attention' })).toBeVisible();
+  await app!.evaluate(({ dialog }, filename) => {
+    dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [filename] });
+    dialog.showMessageBox = async () => ({ response: 1, checkboxChecked: false });
+  }, filename);
+  await page.getByLabel('Passphrase for the archive').fill(backupPassphrase);
+  await page.getByRole('button', { name: 'Choose and verify backup' }).click();
+  await expect(
+    page.getByText('The current installation is damaged.', { exact: false }),
+  ).toBeVisible();
+  await page.getByLabel('Type RESTORE to confirm replacement').fill('RESTORE');
+  await page.getByRole('button', { name: 'Restore this pharmacy' }).click();
+  await expect(
+    page.getByText('Restore completed. A new backup was not created;', { exact: false }),
+  ).toBeVisible();
+  await login(page);
+  await expect(page.getByRole('heading', { name: 'Welcome to Test Pharmacy' })).toBeVisible();
+});
+
+test('external folder reselection verifies a fresh copy instead of relying on an old success record', async () => {
+  const page = await launch();
+  await setup(page);
+  await configureBackups(page);
+  const external = await mkdtemp(path.join(tmpdir(), 'medipharm-reselect-'));
+  try {
+    await app!.evaluate(({ dialog }, directory) => {
+      dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [directory] });
+    }, external);
+    await page.getByRole('button', { name: 'Choose external backup folder' }).click();
+    await expect(page.getByRole('status')).toContainText(
+      'Local and external encrypted backups verified',
+    );
+    const first = (await readdir(external)).filter((file) => file.endsWith('.mpbackup'));
+    expect(first.length).toBeGreaterThan(0);
+    for (const file of first) await rm(path.join(external, file));
+    await page.getByRole('button', { name: 'Reselect external folder', exact: false }).click();
+    await expect(page.getByRole('status')).toContainText(
+      'Local and external encrypted backups verified',
+    );
+    const verified = (await readdir(external)).filter((file) => file.endsWith('.mpbackup'));
+    expect(verified.length).toBeGreaterThan(0);
+    expect(verified.some((file) => first.includes(file))).toBe(false);
+  } finally {
+    await rm(external, { recursive: true, force: true });
+  }
 });

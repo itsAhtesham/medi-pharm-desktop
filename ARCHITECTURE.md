@@ -48,7 +48,7 @@ The single service process keeps SQLite writes centralized and synchronous datab
 | Tailwind CSS and shadcn/ui | Accessible controls and consistent styling |
 | React Hook Form and Zod | Form handling and runtime input schemas |
 | SQLite and better-sqlite3 | Embedded local database and backup interface |
-| Drizzle ORM | Typed SQLite mappings and reviewed migration generation |
+| Reviewed SQL and typed projections | Authoritative immutable DDL, parameterized queries and runtime schema verification; an ORM remains optional |
 | Node.js crypto | Password KDF, random identifiers/keys, hashes, authenticated archive encryption |
 | Electron Forge | Native dependency rebuilds, packaging, installers |
 | Vitest and Playwright | Domain/integration tests and desktop workflow automation |

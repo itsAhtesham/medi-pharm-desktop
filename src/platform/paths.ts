@@ -1,5 +1,21 @@
 import path from 'node:path';
 
+/** Compare already-resolved filesystem paths using the target OS's path rules. */
+export function isWithinDirectory(
+  directory: string,
+  root: string,
+  platform = process.platform,
+): boolean {
+  const paths = platform === 'win32' ? path.win32 : path.posix;
+  if (!paths.isAbsolute(directory) || !paths.isAbsolute(root))
+    throw new Error('Absolute paths are required.');
+  const relative = paths.relative(root, directory);
+  return (
+    relative === '' ||
+    (relative !== '..' && !relative.startsWith(`..${paths.sep}`) && !paths.isAbsolute(relative))
+  );
+}
+
 export function previewRoot(platform: string, home: string, env: NodeJS.ProcessEnv): string {
   const paths = platform === 'win32' ? path.win32 : path.posix;
   // Preview builds stay isolated from both the old prototype and future production data.

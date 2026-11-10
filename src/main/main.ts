@@ -1,7 +1,24 @@
-import { app, BrowserWindow, dialog, ipcMain, protocol, session } from 'electron';
-import { mkdirSync } from 'node:fs';
-import { readFile, writeFile } from 'node:fs/promises';
+import {
+  app,
+  BrowserWindow,
+  dialog,
+  ipcMain,
+  protocol,
+  session,
+  safeStorage,
+  powerMonitor,
+  shell,
+} from 'electron';
+import { mkdirSync, existsSync } from 'node:fs';
+import { readFile, writeFile, rm } from 'node:fs/promises';
 import { z } from 'zod';
+import {
+  backupRotationSchema,
+  backupAccessSchema,
+  restoreInputSchema,
+  restoreConfirmSchema,
+} from '../contracts/backup';
+import { atomicJson } from '../platform/durable-files';
 import { homedir } from 'node:os';
 import path from 'node:path';
 import {
@@ -15,6 +32,8 @@ import {
   updatePharmacySchema,
   type Result,
   type Lifecycle,
+  type ServiceCommand,
+  type ServiceData,
 } from '../contracts/desktop';
 import { LifecycleController, permits, type Operation } from '../application/lifecycle';
 import { Diagnostics } from '../platform/diagnostics';
@@ -96,8 +115,115 @@ async function syncAccountState(): Promise<void> {
         ? 'Your pharmacy is ready.'
         : next === 'locked'
           ? 'Sign in to your local pharmacy.'
-          : 'Set up your pharmacy on this computer.',
+          : next === 'recoveryRequired'
+            ? 'Existing local data could not be validated. Preserve the files, restart storage or recover from a verified backup.'
+            : 'Set up your pharmacy on this computer.',
     );
+}
+
+async function keyStoreAvailable(): Promise<boolean> {
+  try {
+    if (!(await safeStorage.isAsyncEncryptionAvailable())) return false;
+    return (
+      process.platform !== 'linux' ||
+      !['basic_text', 'unknown'].includes(safeStorage.getSelectedStorageBackend())
+    );
+  } catch {
+    return false;
+  }
+}
+const protectedKeyPath = path.join(root, 'settings', 'backup-key.protected');
+async function rememberBackupKey(key: string, remember: boolean): Promise<void> {
+  await rm(protectedKeyPath, { force: true });
+  if (!remember || !(await keyStoreAvailable())) return;
+  try {
+    const encrypted = await safeStorage.encryptStringAsync(key);
+    atomicJson(protectedKeyPath, { format: 1, encrypted: encrypted.toString('base64') });
+  } catch {
+    /* An unavailable OS vault leaves only the in-memory key. */
+  }
+}
+async function backupStatus() {
+  const result = service ? await service.request({ command: 'backupStatus' }) : failure();
+  if (result.ok) result.data.osProtected = existsSync(protectedKeyPath);
+  return result;
+}
+async function unlockDeviceBackup(): Promise<void> {
+  if (!service || !existsSync(protectedKeyPath) || !(await keyStoreAvailable())) return;
+  const status = await service.request({ command: 'backupStatus' });
+  if (!status.ok || !status.data.configured || status.data.unlocked) return;
+  try {
+    const saved = z
+      .object({ format: z.literal(1), encrypted: z.string().max(16384) })
+      .strict()
+      .parse(JSON.parse(await readFile(protectedKeyPath, 'utf8')));
+    const decrypted = await safeStorage.decryptStringAsync(Buffer.from(saved.encrypted, 'base64'));
+    const result = await service.request({
+      command: 'backupUnlockDevice',
+      input: { key: decrypted.result },
+    });
+    if (result.ok && decrypted.shouldReEncrypt) await rememberBackupKey(decrypted.result, true);
+  } catch {
+    /* The owner can use the portable backup passphrase instead. */
+  }
+}
+async function storageJob<C extends ServiceCommand>(
+  command: C,
+  operation: 'backup' | 'restore',
+): Promise<Result<ServiceData<C['command']>>> {
+  if (!service || !['ready', 'setupRequired', 'recoveryRequired'].includes(lifecycle.value.state))
+    return failure();
+  lifecycle.move(
+    'maintenance',
+    operation === 'restore'
+      ? 'Restoring the verified pharmacy backup…'
+      : 'Verifying encrypted backups…',
+    operation,
+  );
+  diagnostics.record('operation.started');
+  try {
+    const result = await service.request(command);
+    diagnostics.record(result.ok ? 'operation.finished' : 'operation.failed');
+    if (
+      !result.ok &&
+      result.code === 'RECOVERY_REQUIRED' &&
+      lifecycle.value.state === 'maintenance'
+    )
+      lifecycle.move('recoveryRequired', result.message);
+    return result;
+  } finally {
+    if (lifecycle.value.state === 'maintenance') {
+      const state = await service.request({ command: 'accountState' });
+      if (lifecycle.value.state === 'maintenance') {
+        if (state.ok)
+          lifecycle.move(
+            state.data.state,
+            state.data.state === 'ready'
+              ? 'Your pharmacy is ready.'
+              : 'Sign in to the restored pharmacy.',
+          );
+        else
+          lifecycle.move(
+            'recoveryRequired',
+            'Restart storage to resolve the interrupted operation.',
+          );
+      }
+    }
+  }
+}
+let backupTickRunning = false;
+async function scheduledBackup(): Promise<void> {
+  if (backupTickRunning || quitting || lifecycle.value.state !== 'ready') return;
+  backupTickRunning = true;
+  try {
+    await unlockDeviceBackup();
+    if (lifecycle.value.state === 'ready') {
+      const status = await backupStatus();
+      if (status.ok && status.data.unlocked) await storageJob({ command: 'backupTick' }, 'backup');
+    }
+  } finally {
+    backupTickRunning = false;
+  }
 }
 
 function registerApi(): void {
@@ -196,8 +322,13 @@ function registerApi(): void {
   );
   const account = async (command: Parameters<ServiceClient['request']>[0]) => {
     const result = service ? await service.request(command) : failure();
-    if (result.ok) await syncAccountState();
-    else if (
+    if (result.ok) {
+      await syncAccountState();
+      if (command.command === 'login')
+        setTimeout(() => {
+          void scheduledBackup();
+        }, 1000).unref();
+    } else if (
       command.command === 'setup' &&
       result.code === 'STORAGE_ERROR' &&
       lifecycle.value.state === 'setupRequired'
@@ -217,6 +348,104 @@ function registerApi(): void {
     account({ command: 'changePassword', input }),
   );
   handle(channels.logout, noInputSchema, 'read', () => account({ command: 'logout' }));
+  handle(channels.openBackupFolder, noInputSchema, 'read', async () => {
+    const status = await service!.request({ command: 'backupStatus' });
+    if (!status.ok) return status;
+    const error = await shell.openPath(path.join(root, 'backups'));
+    if (error)
+      return {
+        ok: false,
+        code: 'STORAGE_ERROR',
+        message: 'The backup folder could not be opened.',
+      };
+    return success(null);
+  });
+  handle(channels.backupRotate, backupRotationSchema, 'write', async (input) => {
+    const result = await service!.request({ command: 'backupRotate', input });
+    if (!result.ok) return result;
+    await rememberBackupKey(result.data.key, input.remember);
+    const backup = await storageJob({ command: 'backupCreate' }, 'backup');
+    if (!backup.ok)
+      return {
+        ok: false,
+        code: backup.code,
+        message:
+          'Backup credentials changed, but the new archive was not confirmed. Unlock with the new passphrase and create a backup.',
+      };
+    return backupStatus();
+  });
+  handle(channels.backupStatus, noInputSchema, 'read', backupStatus);
+  for (const [channel, command] of [
+    [channels.backupConfigure, 'backupConfigure'],
+    [channels.backupUnlock, 'backupUnlock'],
+  ] as const) {
+    handle(channel, backupAccessSchema, 'write', async (input) => {
+      const result = await service!.request({ command, input });
+      if (!result.ok) return result;
+      await rememberBackupKey(result.data.key, input.remember);
+      return backupStatus();
+    });
+  }
+  handle(channels.backupCreate, noInputSchema, 'read', async () => {
+    const result = await storageJob({ command: 'backupCreate' }, 'backup');
+    if (result.ok) result.data.osProtected = existsSync(protectedKeyPath);
+    return result;
+  });
+  handle(channels.backupExternal, noInputSchema, 'read', async () => {
+    const chosen = await dialog.showOpenDialog(window!, {
+      title: 'Choose external backup folder',
+      properties: ['openDirectory'],
+    });
+    if (chosen.canceled || !chosen.filePaths[0]) return success(null);
+    const result = await service!.request({
+      command: 'backupExternal',
+      input: { directory: chosen.filePaths[0] },
+    });
+    if (!result.ok) return result;
+    // Explicit reselection verifies a fresh copy, even if device history says an
+    // older archive was copied to this destination before it went missing.
+    const backup = await storageJob({ command: 'backupCreate' }, 'backup');
+    if (!backup.ok) return backup;
+    return backupStatus();
+  });
+  handle(channels.restorePreview, restoreInputSchema, 'restore', async (input) => {
+    const chosen = await dialog.showOpenDialog(window!, {
+      title: 'Select an encrypted MediPharm backup',
+      properties: ['openFile'],
+      filters: [{ name: 'MediPharm backup', extensions: ['mpbackup'] }],
+    });
+    if (chosen.canceled || !chosen.filePaths[0]) return success(null);
+    return service!.request({
+      command: 'restorePreview',
+      input: { ...input, filename: chosen.filePaths[0] },
+    });
+  });
+  handle(channels.restoreConfirm, restoreConfirmSchema, 'restore', async (input) => {
+    const confirmation = await dialog.showMessageBox(window!, {
+      type: 'warning',
+      title: 'Replace this pharmacy?',
+      message: 'Restore the verified backup and replace the local pharmacy?',
+      detail: input.salvage
+        ? 'The damaged original files will be retained. They cannot be verified as a safety backup. Restore the selected archive and sign in with its owner account.'
+        : 'Later local changes and unsaved drafts will be replaced. Any existing pharmacy gets a verified safety backup and its old data directory is retained. Sign in with the restored owner account afterwards.',
+      buttons: ['Cancel', 'Restore pharmacy'],
+      defaultId: 0,
+      cancelId: 0,
+      noLink: true,
+    });
+    if (confirmation.response !== 1)
+      return {
+        ok: false,
+        code: 'INVALID_REQUEST',
+        message: 'Restore cancelled. Current pharmacy data is unchanged.',
+      };
+    const result = await storageJob({ command: 'restoreConfirm', input }, 'restore');
+    if (result.ok) draftDirty = false;
+    return result;
+  });
+  handle(channels.restoreCancel, noInputSchema, 'restore', () =>
+    service!.request({ command: 'restoreCancel' }),
+  );
   handle(channels.exportDiagnostics, noInputSchema, 'diagnostics', async () => {
     if (!window) return failure();
     const result = await dialog.showSaveDialog(window, {
@@ -349,6 +578,12 @@ async function start(): Promise<void> {
   diagnostics.record('app.started');
   await startStorage();
   registerApi();
+  setInterval(() => {
+    void scheduledBackup();
+  }, 5 * 60_000).unref();
+  powerMonitor.on('resume', () => {
+    void scheduledBackup();
+  });
   setInterval(() => {
     void syncAccountState();
   }, 30_000).unref();

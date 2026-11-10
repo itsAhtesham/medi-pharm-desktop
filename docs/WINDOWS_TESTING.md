@@ -1,6 +1,6 @@
 # Test the desktop preview on Windows
 
-Use made-up pharmacy/account details. Owner access and pharmacy settings are implemented; business workflows and encrypted backups are still pending.
+Use made-up pharmacy/account details. Owner access, pharmacy settings, encrypted backups and journaled restore are implemented. Business workflows and Windows release gates remain pending.
 
 ## Prepare the native build
 
@@ -43,7 +43,20 @@ Disconnect networking after building, then check:
 
 Preview data: `%LOCALAPPDATA%\MediPharm Desktop Preview\`. SQLite lives at `data\live\medipharm.sqlite`; installation identity at `settings\installation.json`; Chromium files at `runtime\`. Old `MediPharm Prototype` data is not imported. Preserve the whole preview profile for reopen/reinstall checks. There is no tray process or Windows-startup service.
 
-For service-crash/missing-database tests use the automated temporary profiles, not a profile you want to preserve. Interrupted setup currently enters recovery rather than automatically resuming. Backup and restore controls are not yet available. The original raw snapshot and DPAPI smoke checks belong to the historical prototype commit; Windows protected-key verification remains required when the encrypted backup feature is connected.
+## Backup and recovery acceptance
+
+Follow [the detailed walkthrough](BACKUP_USAGE.md) with synthetic data:
+
+- Configure a separate backup passphrase, select OS protection, create an archive and check its local verified timestamp. Close/reopen, sign in and confirm the protected key unlocks without re-entering the backup passphrase. This is the DPAPI test; Linux execution does not prove it.
+- Repeat with Remember securely disabled. After restart, backup creation must remain disabled until the passphrase is entered. An unavailable key store must never persist a plaintext key.
+- Register an external folder, verify independent success, disconnect it, change the pharmacy name and create another archive. Local success must remain visible with external pending. Reconnect/reselect the original folder and verify the copy. Test changed drive letters without placing files on a different drive.
+- Restore an earlier archive, inspect the preview, cancel once, then explicitly confirm. Verify restored pharmacy name, required owner login, retained original files and a pinned safety archive. A wrong passphrase, altered or truncated archive must not replace local data.
+- Restore on a second Windows profile/computer using only the archive/passphrase and restored owner credentials. Reconfigure external storage and verify new local key protection after an interactive unlock on that computer.
+- Change the backup passphrase and optionally rotate the master key. A new archive must verify with the new passphrase; a separately preserved older archive must still need the old passphrase.
+- In isolated disposable profiles, exercise missing/corrupt data recovery and process termination around replacement. Recovery must preserve old files and either open a verified generation or remain blocked. Never use a wanted pharmacy profile for fault tests.
+- Exercise insufficient space, read-only destinations and drive unplugging on disposable media. Check that earlier completed archives survive and `.partial` files never become completed success entries.
+
+The preview caps archives at 64 MiB and checks eligibility while signed in. Retention keeps 14 daily/8 weekly copies; safety archives and old live generations stay retained. New setup resumes a prepared journal; a legacy partial claim or damaged candidate requires explicit recovery. Unsupported database schemas are rejected, not silently upgraded.
 
 ## Record evidence
 

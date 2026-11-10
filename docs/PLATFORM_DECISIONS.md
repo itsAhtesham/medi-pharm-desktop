@@ -8,7 +8,7 @@
 - Develop on Linux. A Windows 11 laptop is available for manual native testing.
 - Keep the single-computer, local-data, offline design. The initial dataset is empty.
 
-Retain the existing proposed defaults: one local owner account, a separate offline login recovery code, daily backups while the app is running, 14 daily and 8 weekly retained copies, optional external storage, and a separate owner-held backup passphrase. Live SQLite is protected by OS access controls; encrypted backups do not mean the live database is encrypted. Owner access and a separate login recovery code are now implemented in the development preview; backup/key-custody behavior remains pending.
+Retain the existing proposed defaults: one local owner account, a separate offline login recovery code, daily backups while the app is running, 14 daily and 8 weekly retained copies, optional external storage, and a separate owner-held backup passphrase. Live SQLite is protected by OS access controls; encrypted backups do not mean the live database is encrypted. Owner access, separate login recovery codes, encrypted archives, local/external scheduling/retention and journaled restore are now implemented in the development preview. Windows verification and the owner recovery-custody walkthrough remain pending.
 
 ## Initial implementation decisions
 
@@ -34,9 +34,9 @@ The foundation pins TypeScript 6.0.3 because typescript-eslint 8.72.2 supports v
 
 Exact dependency resolution is in `pnpm-lock.yaml`. Forge 8 emits CommonJS main/preload/service bundles with `.cjs` filenames. Electron 45's npm package provides an explicit `install-electron` command; the project runs it on installation. Native SQLite stays external to the JavaScript service bundle and its native binaries are unpacked from ASAR. The 13.x driver uses Node-API prebuilds; validate the actual installed binary on each OS rather than assuming Linux execution proves Windows support.
 
-The original service owned the sample SQLite database; it now owns the preview pharmacy database with owner authentication and a migration ledger. The legacy storage tests remain isolated. It uses WAL, FULL synchronization, foreign keys, and bounded busy waits. Snapshot tests use the SQLite backup API, convert the closed snapshot to DELETE journal mode, and open a separate restored copy. This proves storage primitives only; it does not implement the future encrypted backup, retention, journaled live restore, or pharmacy migration system.
+The original service owned the sample SQLite database; it now owns the preview pharmacy database with owner authentication and a migration ledger. The legacy storage tests remain isolated. It uses WAL, FULL synchronization, foreign keys, and bounded busy waits. Snapshot tests use the SQLite backup API, convert the closed snapshot to DELETE journal mode, and open a separate restored copy. Those historical tests prove the primitives. The current service additionally implements bounded encrypted archives, retention and journaled live restore. Future schema-version upgrades remain disabled pending concrete migration/recovery rehearsals.
 
-The current UI uses small local CSS files and system fonts. Owner-access screens and initial SQL schema are implemented. Drizzle business mappings and further workflow UI remain pending; no Tailwind/shadcn adoption is required for this slice. No web implementation files have been copied.
+The current UI uses small local CSS files and system fonts. Owner-access/backup screens and initial SQL schema are implemented. Reviewed SQL is authoritative and checked against the actual runtime schema; Drizzle is deferred until a concrete repository need justifies it. Business workflow UI remains pending; no Tailwind/shadcn adoption is required for this slice. No web implementation files have been copied.
 
 ## Pending decisions and gates
 

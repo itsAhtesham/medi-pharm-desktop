@@ -49,7 +49,16 @@ export class RequestBroker {
         message: 'The storage request is invalid.',
       });
     return new Promise((resolve) => {
-      const timer = setTimeout(() => this.fail('timeout'), this.timeoutMs);
+      const longOperation = [
+        'backupCreate',
+        'backupTick',
+        'restorePreview',
+        'restoreConfirm',
+      ].includes(command.command);
+      const timer = setTimeout(
+        () => this.fail('timeout'),
+        longOperation ? Math.max(this.timeoutMs, 120_000) : this.timeoutMs,
+      );
       this.pending.set(id, {
         command: command.command,
         resolve: resolve as Pending['resolve'],
@@ -92,17 +101,28 @@ export class RequestBroker {
     this.closed = true;
     for (const item of this.pending.values()) {
       clearTimeout(item.timer);
-      const uncertain = ['setup', 'recover', 'changePassword', 'updatePharmacy'].includes(
-        item.command,
-      );
+      const uncertain = [
+        'setup',
+        'recover',
+        'changePassword',
+        'updatePharmacy',
+        'backupCreate',
+        'backupConfigure',
+        'backupRotate',
+        'restoreConfirm',
+      ].includes(item.command);
       item.resolve({
         ok: false,
         code: uncertain ? 'OUTCOME_UNKNOWN' : 'NOT_READY',
-        message: ['setup', 'recover', 'changePassword'].includes(item.command)
-          ? 'The account change may have completed. Restart storage and try signing in with the new password. Keep the recovery code you saved.'
-          : uncertain
-            ? 'Storage stopped before confirming the result. Restart storage, then retry the same submission; it may already have completed.'
-            : 'Local storage stopped. Restart storage to continue.',
+        message: ['backupConfigure', 'backupRotate'].includes(item.command)
+          ? 'Backup credentials may have changed. Unlock using the new backup passphrase and create a new archive.'
+          : item.command === 'restoreConfirm'
+            ? 'Restore may have completed. Restart storage to recover the journal, then sign in and check the restored pharmacy.'
+            : ['setup', 'recover', 'changePassword'].includes(item.command)
+              ? 'The account change may have completed. Restart storage and try signing in with the new password. Keep the recovery code you saved.'
+              : uncertain
+                ? 'Storage stopped before confirming the result. Restart storage, then retry the same submission; it may already have completed.'
+                : 'Local storage stopped. Restart storage to continue.',
       });
     }
     this.pending.clear();

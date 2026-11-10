@@ -5,13 +5,15 @@ const transitions: Record<LifecycleState, readonly LifecycleState[]> = {
   setupRequired: ['locked', 'ready', 'maintenance', 'recoveryRequired', 'stopping'],
   locked: ['ready', 'maintenance', 'recoveryRequired', 'stopping'],
   ready: ['locked', 'maintenance', 'recoveryRequired', 'stopping'],
-  maintenance: ['ready', 'locked', 'recoveryRequired', 'stopping'],
-  recoveryRequired: ['starting', 'stopping'],
+  maintenance: ['setupRequired', 'ready', 'locked', 'recoveryRequired', 'stopping'],
+  recoveryRequired: ['starting', 'maintenance', 'stopping'],
   stopping: [],
 };
 export type Operation =
-  'read' | 'write' | 'snapshot' | 'restart' | 'diagnostics' | 'setup' | 'login';
+  'read' | 'write' | 'snapshot' | 'restart' | 'diagnostics' | 'setup' | 'login' | 'restore';
 export function permits(state: LifecycleState, operation: Operation): boolean {
+  if (operation === 'restore')
+    return state === 'ready' || state === 'setupRequired' || state === 'recoveryRequired';
   if (operation === 'setup') return state === 'setupRequired';
   if (operation === 'login') return state === 'locked';
   if (operation === 'diagnostics') return state !== 'stopping';

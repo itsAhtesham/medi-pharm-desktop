@@ -1,22 +1,13 @@
 import Database from 'better-sqlite3';
-import { createHash, randomUUID } from 'node:crypto';
-import {
-  chmodSync,
-  closeSync,
-  existsSync,
-  fsyncSync,
-  mkdirSync,
-  openSync,
-  readFileSync,
-  writeFileSync,
-} from 'node:fs';
+import { randomUUID } from 'node:crypto';
+import { chmodSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
 import { initialSchema } from './migrations/0001';
-import { validateHash } from '../application/credentials';
+import { applicationId, migrationChecksum as checksum, inspectConnection } from './health';
+import { recoverReplacement, replaceDataset, stagedLive } from './replacement';
+import { syncDirectory } from '../platform/durable-files';
 
-const applicationId = 0x4d504431;
-const checksum = createHash('sha256').update(initialSchema).digest('hex');
 const markerSchema = z.object({ format: z.literal(1), datasetId: z.uuid() }).strict();
 export type OwnerRow = {
   id: string;
@@ -31,13 +22,17 @@ export type OwnerRow = {
 /** The service owns this connection. Construction never creates a database. */
 export class PharmacyDatabase {
   private connection?: Database.Database;
+  recoveryRequired = false;
   readonly filename: string;
   private readonly marker: string;
-  constructor(readonly root: string) {
+  constructor(
+    readonly root: string,
+    allowDamaged = false,
+  ) {
     this.filename = path.join(root, 'data', 'live', 'medipharm.sqlite');
     this.marker = path.join(root, 'settings', 'installation.json');
     for (const folder of [
-      'data/live',
+      'data',
       'settings',
       'operations',
       'backups',
@@ -46,21 +41,26 @@ export class PharmacyDatabase {
       'logs',
     ])
       mkdirSync(path.join(root, folder), { recursive: true, mode: 0o700 });
-    const marked = existsSync(this.marker);
-    const database = existsSync(this.filename);
-    const sidecars = ['-wal', '-shm', '-journal'].some((suffix) =>
-      existsSync(this.filename + suffix),
-    );
-    if (!marked && !database && !sidecars) return;
-    if (!marked || !database) throw new Error('Installation identity or database is missing.');
-    const identity = markerSchema.parse(JSON.parse(readFileSync(this.marker, 'utf8')));
+    syncDirectory(root);
+    recoverReplacement(root);
+    mkdirSync(path.join(root, 'data', 'live'), { recursive: true, mode: 0o700 });
+    syncDirectory(path.join(root, 'data'));
     try {
+      const marked = existsSync(this.marker);
+      const database = existsSync(this.filename);
+      const sidecars = ['-wal', '-shm', '-journal'].some((suffix) =>
+        existsSync(this.filename + suffix),
+      );
+      if (!marked && !database && !sidecars) return;
+      if (!marked || !database) throw new Error('Installation identity or database is missing.');
+      const identity = markerSchema.parse(JSON.parse(readFileSync(this.marker, 'utf8')));
       this.connection = new Database(this.filename, { fileMustExist: true });
       this.validate(identity.datasetId);
       this.configure();
     } catch (error) {
       this.close();
-      throw error;
+      if (allowDamaged) this.recoveryRequired = true;
+      else throw error;
     }
   }
   get initialized(): boolean {
@@ -80,26 +80,15 @@ export class PharmacyDatabase {
     if (this.connection || existsSync(this.marker) || existsSync(this.filename))
       throw new Error('Installation already exists.');
     const datasetId = randomUUID();
-    // Persist the claim before SQLite can create anything. A partial setup fails closed;
-    // never silently replace an installation whose commit outcome is uncertain.
-    const fd = openSync(this.marker, 'wx', 0o600);
+    // Build privately first. No installation claim or live file exists until the
+    // complete account is committed and verified. Abandoned staging is not live data.
+    const jobId = randomUUID();
+    const staged = stagedLive(this.root, jobId);
+    mkdirSync(staged, { recursive: true, mode: 0o700 });
+    const filename = path.join(staged, 'medipharm.sqlite');
     try {
-      writeFileSync(fd, JSON.stringify({ format: 1, datasetId }));
-      fsyncSync(fd);
-    } finally {
-      closeSync(fd);
-    }
-    if (process.platform !== 'win32') {
-      const directory = openSync(path.dirname(this.marker), 'r');
-      try {
-        fsyncSync(directory);
-      } finally {
-        closeSync(directory);
-      }
-    }
-    try {
-      this.connection = new Database(this.filename);
-      chmodSync(this.filename, 0o600);
+      this.connection = new Database(filename);
+      chmodSync(filename, 0o600);
       this.configure();
       this.db
         .transaction(() => {
@@ -127,6 +116,14 @@ export class PharmacyDatabase {
         })
         .immediate();
       this.validate(datasetId);
+      this.db.pragma('wal_checkpoint(TRUNCATE)');
+      this.db.pragma('journal_mode = DELETE');
+      this.close();
+      syncDirectory(staged);
+      replaceDataset(this.root, jobId, 'setup');
+      this.connection = new Database(this.filename, { fileMustExist: true });
+      this.configure();
+      this.validate(datasetId);
     } catch (error) {
       this.close();
       throw error;
@@ -147,31 +144,7 @@ export class PharmacyDatabase {
         throw new Error('Unsupported database configuration.');
   }
   private validate(datasetId: string): void {
-    if (this.db.pragma('application_id', { simple: true }) !== applicationId)
-      throw new Error('Unrecognized database.');
-    const migrations = this.db
-      .prepare('SELECT id,checksum FROM schema_migrations ORDER BY id')
-      .all();
-    if (
-      migrations.length !== 1 ||
-      (migrations[0] as { id: number }).id !== 1 ||
-      (migrations[0] as { checksum: string }).checksum !== checksum
-    )
-      throw new Error('Unsupported or modified migration ledger.');
-    const meta = this.db.prepare('SELECT dataset_id FROM app_meta WHERE id=1').get() as
-      { dataset_id: string } | undefined;
-    if (meta?.dataset_id !== datasetId) throw new Error('Dataset identity mismatch.');
-    if (
-      this.db.pragma('integrity_check', { simple: true }) !== 'ok' ||
-      (this.db.pragma('foreign_key_check') as unknown[]).length
-    )
-      throw new Error('Database health check failed.');
-    const owners = this.db.prepare('SELECT * FROM users').all() as OwnerRow[];
-    if (owners.length !== 1 || owners[0].active !== 1) throw new Error('Invalid owner account.');
-    validateHash(owners[0].password_hash);
-    validateHash(owners[0].recovery_hash);
-    if (!this.db.prepare('SELECT id FROM auth_attempts WHERE id=1').get())
-      throw new Error('Missing authentication state.');
+    inspectConnection(this.db, datasetId);
   }
   close(): void {
     this.connection?.close();

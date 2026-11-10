@@ -1,3 +1,4 @@
+import { BackupManager } from '../backup/manager';
 import { PharmacyDatabase } from '../db/pharmacy-database';
 import { OwnerService } from '../application/owner-service';
 import { ApplicationFailure } from '../application/failure';
@@ -7,13 +8,15 @@ const port = process.parentPort;
 const parentPid = process.ppid;
 if (!port) throw new Error('This service requires an Electron parent.');
 let store: OwnerService;
+let backups: BackupManager;
 let queue = Promise.resolve();
 let stopping = false;
 let queued = 0;
 
 try {
   if (!process.argv[2]) throw new Error('Missing application root.');
-  store = new OwnerService(new PharmacyDatabase(process.argv[2]));
+  store = new OwnerService(new PharmacyDatabase(process.argv[2], true));
+  backups = new BackupManager(store);
   port.postMessage({ version: PROTOCOL_VERSION, type: 'ready' });
 } catch {
   port.postMessage({ version: PROTOCOL_VERSION, type: 'fatal' });
@@ -41,6 +44,11 @@ port.on('message', (event) => {
   if (request.command === 'shutdown') stopping = true;
   queue = queue.then(async () => {
     try {
+      if (backups.broken && request.command !== 'shutdown')
+        throw new ApplicationFailure(
+          'RECOVERY_REQUIRED',
+          'A restore needs recovery. Restart storage to resolve the replacement journal.',
+        );
       let data: unknown;
       switch (request.command) {
         case 'status':
@@ -67,7 +75,41 @@ port.on('message', (event) => {
         case 'updatePharmacy':
           data = store.updatePharmacy(request.input);
           break;
+        case 'backupStatus':
+          data = backups.status();
+          break;
+        case 'backupRotate':
+          data = await backups.rotate(request.input);
+          break;
+        case 'backupConfigure':
+          data = await backups.configure(request.input.passphrase);
+          break;
+        case 'backupUnlock':
+          data = await backups.unlock(request.input.passphrase);
+          break;
+        case 'backupUnlockDevice':
+          data = backups.unlockDevice(request.input.key);
+          break;
+        case 'backupCreate':
+          data = await backups.create();
+          break;
+        case 'backupTick':
+          data = await backups.tick();
+          break;
+        case 'backupExternal':
+          data = backups.configureExternal(request.input.directory);
+          break;
+        case 'restorePreview':
+          data = await backups.preview(request.input.filename, request.input.passphrase);
+          break;
+        case 'restoreConfirm':
+          data = await backups.restore(request.input.token, request.input.salvage);
+          break;
+        case 'restoreCancel':
+          data = backups.cancelPreview();
+          break;
         case 'shutdown':
+          backups.close();
           store.close();
           data = null;
           break;
@@ -86,9 +128,14 @@ port.on('message', (event) => {
         id: request.id,
         result: {
           ok: false,
-          code: error instanceof ApplicationFailure ? error.code : 'STORAGE_ERROR',
-          message:
-            error instanceof ApplicationFailure
+          code: backups.broken
+            ? 'RECOVERY_REQUIRED'
+            : error instanceof ApplicationFailure
+              ? error.code
+              : 'STORAGE_ERROR',
+          message: backups.broken
+            ? 'Restore was interrupted. Restart storage to recover the verified generation.'
+            : error instanceof ApplicationFailure
               ? error.message
               : 'The local operation failed. Preserve the data files and check available disk space.',
         },
@@ -107,6 +154,7 @@ setInterval(() => {
     if (!stopping) {
       stopping = true;
       void queue.finally(() => {
+        backups.close();
         store.close();
         process.exit(0);
       });
@@ -116,6 +164,7 @@ setInterval(() => {
 process.on('SIGTERM', () => {
   stopping = true;
   void queue.finally(() => {
+    backups.close();
     store.close();
     process.exit(0);
   });

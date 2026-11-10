@@ -2,7 +2,11 @@
 
 Provide portable encrypted backups to a directory on the computer and, optionally, an external hard drive or USB drive. Backups run inside the application and require no internet. A backup must be restorable on a replacement Windows 10 or 11 computer without the original computer's OS key store.
 
-This is a proposed implementation design. Automatic backup timing, retention, and passphrase custody must be confirmed during the owner's walkthrough.
+This document defines the target design. The 11 November 2026 development slice implements portable archives, local/external copies, scheduling, key/passphrase rotation, restore preview, safety backups and journaled replacement. See [usage](docs/BACKUP_USAGE.md) and [verification](docs/verification/BACKUP_AND_RECOVERY.md). Full Windows, scale and migration release gates remain open.
+
+The current format is one bounded encrypted manifest/database frame, capped at 64 MiB. Current snapshot jobs briefly pause business commands through maintenance mode; concurrent writing and streaming are later scale improvements. It accepts no archive-supplied filenames or compression. The scheduler checks after login/resume and every five minutes while signed in and the backup key is unlocked. Retention keeps 14 daily and 8 weekly archives per dataset and pins safety copies; old live generations are retained. Future pre-migration retention and an owner acceptance/cleanup flow are not yet enabled. Backup history is bounded to 1,000 registered entries, with ordinary obsolete history pruned; reaching the limit with retained/pinned entries blocks new jobs without deleting archives.
+
+New-device restore initially keeps the recovered key in memory. After restarting, unlock backups and choose OS protection to remember it on the new computer. Existing restores preserve that device's backup configuration. Keys never cross the renderer API. Actual DPAPI and removable-filesystem behavior still require Windows testing.
 
 ## Backup destinations and behavior
 

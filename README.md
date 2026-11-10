@@ -6,7 +6,7 @@ The user confirmed the existing business scope unchanged on 10 November 2026. A 
 
 ## Current status
 
-The app now has an **offline owner-access development preview**. Phase 03/04 storage and account work is in progress; the application is not ready for pharmacy operations.
+The app now has a **storage, owner-access and encrypted-recovery development preview**. Business workflows and Windows release verification remain pending; it is not ready for pharmacy operations.
 
 Implemented:
 
@@ -16,9 +16,14 @@ Implemented:
 - Reviewed initial schema, migration checksum ledger, dataset identity, strict constraints and health checks.
 - Pharmacy-name edits with optimistic versions, atomic audit/revision/receipt writes, and safe replay after a lost response.
 - Service restart requiring login, draft preservation, unsaved-close confirmation, and redacted diagnostics.
+- Exact quantity/date helpers and a shared transactional mutation/numbering foundation.
+- Private staged setup and journaled dataset replacement with interrupted-operation recovery.
+- Portable AES-256-GCM `.mpbackup` archives, passphrase-wrapped master keys, optional OS-protected local keys, and explicit in-memory fallback.
+- Manual/daily backups while signed in, independent external-drive verification, 14 daily/8 weekly retention, and pinned restore safety copies.
+- Verified restore previews, fresh-profile restore, damaged-installation recovery, and backup passphrase/key rotation.
 - Unit, integration, recovery, and packaged desktop tests using temporary synthetic profiles.
 
-Customer, medicine, purchase and follow-up workflows, encrypted backups, restore, CSV export, and signed installers remain future work. Use test data only. The old prototype snapshot/key-store checks remain historical evidence and isolated storage tests; raw snapshots are no longer exposed by the app.
+Customer, medicine, purchase and follow-up workflows, CSV export, version-to-version migration scripts, and signed installers remain future work. Use test data only. The old prototype snapshot/key-store checks remain historical evidence and isolated storage tests; raw snapshots are no longer exposed by the app.
 
 ## Develop on Linux
 
@@ -45,9 +50,13 @@ On Linux the packaged executable is `out/MediPharm Desktop Preview-linux-x64/med
 
 Preview data lives in `${XDG_DATA_HOME:-~/.local/share}/medi-pharm-desktop-preview/` on Linux or `%LOCALAPPDATA%/MediPharm Desktop Preview/` on Windows. These identities are deliberately separate from the future production app. Automated desktop tests set `MEDIPHARM_PREVIEW_HOME` to a fresh temporary directory. That override belongs to this preview and must not become a production authentication/reset bypass.
 
-The live database is `data/live/medipharm.sqlite`, with installation identity in `settings/installation.json`. The new preview does not open or import old prototype data. Setup displays a recovery code before creating the account; save it privately, then acknowledge it. Password/recovery changes require a new sign-in. No credentials are built in.
+The live database is `data/live/medipharm.sqlite`, with installation identity in `settings/installation.json`. The new preview does not open or import old prototype data. Setup displays a login recovery code before creating the account; save it privately, then acknowledge it. Password/recovery changes require a new sign-in. No credentials are built in.
 
-A missing/corrupt database or mismatched migration ledger opens recovery mode. An interrupted first setup also fails closed if its files cannot be validated; automatic setup resumption and journaled restore are still pending. Preserve the complete profile rather than deleting individual SQLite/WAL/marker files. Existing-schema upgrades are disabled until the backup/recovery phases are implemented.
+Open **Settings → Encrypted backups & restore** to configure a separate backup passphrase, create an archive, open its local folder, or register an external destination. A fresh installation and recovery mode also offer restore. See [the backup walkthrough](docs/BACKUP_USAGE.md).
+
+A missing/corrupt database or mismatched migration ledger opens recovery mode. New setup builds privately and publishes through the same verified replacement journal as restore. Startup completes an interrupted prepared replacement or blocks ambiguous/damaged candidates while retaining the original files. Ordinary restore requires a verified current-data safety archive; explicit damaged-data recovery preserves the originals without falsely claiming they are a usable backup.
+
+This preview caps archives at **64 MiB** and retains old live generations/safety archives for inspection. Windows filesystem/DPAPI verification, large-data streaming, and future-schema upgrade rehearsals remain release gates. Existing unsupported schemas are never upgraded automatically. Use synthetic data until the release checks and business workflows are complete.
 
 ## Test on Windows
 
@@ -60,6 +69,7 @@ The current installer configuration is set up to produce an **unsigned preview**
 | Document | Purpose |
 | --- | --- |
 | [Platform decisions](docs/PLATFORM_DECISIONS.md) | Confirmed scope, prototype identity, pinned toolchain, pending hardware decisions |
+| [Backup and recovery verification](docs/verification/BACKUP_AND_RECOVERY.md) | Current archive, restore, interruption and packaged-test evidence |
 | [Storage and account verification](docs/verification/STORAGE_AND_ACCOUNT.md) | Current owner access, schema, mutation and packaged-test evidence |
 | [Foundation verification](docs/verification/FOUNDATION.md) | Latest implemented lifecycle/API work, checks, and remaining gates |
 | [Phase 00 verification](docs/verification/PHASE_00.md) | Actual checks and remaining platform gates |

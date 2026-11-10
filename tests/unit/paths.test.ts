@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import path from 'node:path';
-import { assetPath, previewRoot } from '../../src/platform/paths';
+import { assetPath, previewRoot, isWithinDirectory } from '../../src/platform/paths';
 
 describe('isolated platform storage', () => {
   it('uses local Windows profile storage without guessing a drive or user', () => {
@@ -50,4 +50,14 @@ describe('packaged asset boundary', () => {
       expect(assetPath(root, url), url).toBeNull();
     }
   });
+});
+
+it('recognizes Windows case variations and drive boundaries when excluding internal backup folders', () => {
+  expect(isWithinDirectory('c:\\Users\\Test\\Data\\live', 'C:\\Users\\Test\\Data', 'win32')).toBe(
+    true,
+  );
+  expect(isWithinDirectory('C:\\Users\\Test\\DATA', 'c:\\users\\test\\data', 'win32')).toBe(true);
+  expect(isWithinDirectory('D:\\Backups', 'C:\\Users\\Test\\Data', 'win32')).toBe(false);
+  expect(isWithinDirectory('/data/profile-copy', '/data/profile', 'linux')).toBe(false);
+  expect(isWithinDirectory('/data/profile/staging', '/data/profile', 'linux')).toBe(true);
 });

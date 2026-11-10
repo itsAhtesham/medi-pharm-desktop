@@ -6,9 +6,13 @@ The schema below is a proposed fresh desktop schema using the current demo's med
 
 ## Current implementation
 
-The development preview uses `src/db/migrations/0001.ts` and a checksum ledger for the initial schema, with explicit setup and identity checks in `PharmacyDatabase`. It currently executes parameterized SQL directly through better-sqlite3; Drizzle mappings remain a phase 03 task. Existing-schema upgrades are rejected until verified backup and migration recovery exist. Business tables are present, but their domain services and relationship-equation checks are not yet implemented.
+The development preview uses `src/db/migrations/0001.ts` as authoritative reviewed SQL through better-sqlite3. Typed application projections validate its results; Drizzle is deferred rather than maintaining a second schema definition without a repository need. Startup compares both the checksum ledger and actual tables/indexes/triggers against that DDL, then checks dataset identity, integrity, foreign keys, credentials, and currently implemented date/relationship invariants.
 
-Setup durably creates the installation claim before SQLite can create the database, then commits schema, metadata, pharmacy and owner together. A crash after that commit reopens a validated, locked account. A crash before commit leaves a recovery condition with files preserved; safe automatic setup resumption remains pending. See [storage/account verification](docs/verification/STORAGE_AND_ACCOUNT.md).
+Setup builds and commits privately in staging. A prepared replacement journal is flushed only after the candidate is complete and verified. Startup resolves that journal before creating/opening the live directory. Before publication, an abandoned setup does not claim an initialized pharmacy. After preparation, recovery completes the verified generation or stops without deleting either dataset. A legacy partial claim still requires recovery.
+
+The shared mutation runner performs authorization, canonical payload hashing, receipt replay, synchronous mutation, audit/revision writes and receipt insertion in one immediate transaction. Sequence allocation requires that surrounding transaction. Quantity/date helpers use exact thousandths and date-only calendar arithmetic. Business commands will supply further supply-chain and follow-up invariants as they are implemented.
+
+Backups use verified SQLite snapshots; restore stages and validates candidates, preserves the prior live directory and requires a fresh login. Device identity, key configuration, destinations and backup history stay outside the restored database. Only schema version 1 is supported; automatic existing-schema upgrades remain disabled until a concrete migration and its recovery rehearsal exist. See [backup/recovery evidence](docs/verification/BACKUP_AND_RECOVERY.md).
 
 ## Permanent directories
 
@@ -53,7 +57,7 @@ After initialization, a missing database is a recovery condition. Validate the i
 
 ## Connection ownership and configuration
 
-One service process owns one primary read/write connection through `better-sqlite3`. Drizzle operates through that connection. Temporary read-only verification connections to completed snapshots are allowed; they are closed before restore or replacement. Do not build a PostgreSQL-style connection pool for this application.
+One service process owns one primary read/write connection through `better-sqlite3`. Typed parameterized queries operate through that connection; any future ORM must use the same service-owned connection. Temporary read-only verification connections to completed snapshots are allowed; they are closed before restore or replacement. Do not build a PostgreSQL-style connection pool for this application.
 
 On every applicable connection, set and verify the configuration rather than relying on defaults:
 
@@ -68,7 +72,7 @@ PRAGMA busy_timeout = 5000;
 
 Record the actual SQLite engine version in diagnostics and release verification; it is the version shipped by the selected native driver. Check relevant upstream fixes before pinning a release. Never delete a live WAL or SHM file as routine cleanup. WAL files can contain committed changes that are not yet in the main file. [SQLite WAL documentation](https://www.sqlite.org/wal.html)
 
-Use parameterized queries, disabled extension loading, bounded input, paginated reads, and a controlled schema. Use `STRICT` tables where supported by the pinned SQLite/Drizzle migration path; if generated DDL needs adjustment, check in and test the explicit SQL. Persistence rules must not depend only on TypeScript types.
+Use parameterized queries, disabled extension loading, bounded input, paginated reads, and a controlled schema. Use `STRICT` tables where supported by the pinned SQLite migration path; if generated DDL needs adjustment, check in and test the explicit SQL. Persistence rules must not depend only on TypeScript types.
 
 ## Representation rules
 

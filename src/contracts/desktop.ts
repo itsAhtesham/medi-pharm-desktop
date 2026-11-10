@@ -1,4 +1,19 @@
 import { z } from 'zod';
+import {
+  backupAccessSchema,
+  backupRotationSchema,
+  type BackupRotation,
+  restoreInputSchema,
+  restoreConfirmSchema,
+  backupStatusSchema,
+  restorePreviewSchema,
+  restoreResultSchema,
+  type BackupAccess,
+  type BackupStatus,
+  type RestoreInput,
+  type RestoreConfirm,
+  type RestorePreview,
+} from './backup';
 
 export const PROTOCOL_VERSION = 1 as const;
 const version = z.literal(PROTOCOL_VERSION);
@@ -22,6 +37,7 @@ export const failureSchema = z
       'AUTH_FAILED',
       'THROTTLED',
       'CONFLICT',
+      'RECOVERY_REQUIRED',
     ]),
     message: z.string().min(1).max(400),
   })
@@ -75,7 +91,7 @@ export const lifecycleSchema = z
     revision: z.number().int().nonnegative(),
     state: lifecycleStateSchema,
     message: z.string().max(400),
-    operation: z.enum(['snapshot', 'restoreCheck']).nullable(),
+    operation: z.enum(['snapshot', 'restoreCheck', 'backup', 'restore']).nullable(),
   })
   .strict();
 export type Lifecycle = z.infer<typeof lifecycleSchema>;
@@ -121,7 +137,7 @@ export const changePasswordSchema = z
   .object({ currentPassword: z.string().min(1).max(128), password: passwordSchema })
   .strict();
 export const accountStateSchema = z
-  .object({ state: z.enum(['setupRequired', 'locked', 'ready']) })
+  .object({ state: z.enum(['setupRequired', 'locked', 'ready', 'recoveryRequired']) })
   .strict();
 export const pharmacySchema = z
   .object({ name: z.string().min(1).max(120), version: z.number().int().positive() })
@@ -166,6 +182,41 @@ export const serviceRequestSchema = z.discriminatedUnion('command', [
   z
     .object({ ...envelope, command: z.literal('updatePharmacy'), input: updatePharmacySchema })
     .strict(),
+  z.object({ ...envelope, command: z.literal('backupStatus') }).strict(),
+  z
+    .object({ ...envelope, command: z.literal('backupRotate'), input: backupRotationSchema })
+    .strict(),
+  z
+    .object({ ...envelope, command: z.literal('backupConfigure'), input: backupAccessSchema })
+    .strict(),
+  z.object({ ...envelope, command: z.literal('backupUnlock'), input: backupAccessSchema }).strict(),
+  z
+    .object({
+      ...envelope,
+      command: z.literal('backupUnlockDevice'),
+      input: z.object({ key: z.string().regex(/^[a-f0-9]{64}$/) }).strict(),
+    })
+    .strict(),
+  z.object({ ...envelope, command: z.literal('backupCreate') }).strict(),
+  z.object({ ...envelope, command: z.literal('backupTick') }).strict(),
+  z
+    .object({
+      ...envelope,
+      command: z.literal('backupExternal'),
+      input: z.object({ directory: z.string().min(1).max(4096) }).strict(),
+    })
+    .strict(),
+  z
+    .object({
+      ...envelope,
+      command: z.literal('restorePreview'),
+      input: restoreInputSchema.extend({ filename: z.string().min(1).max(4096) }),
+    })
+    .strict(),
+  z
+    .object({ ...envelope, command: z.literal('restoreConfirm'), input: restoreConfirmSchema })
+    .strict(),
+  z.object({ ...envelope, command: z.literal('restoreCancel') }).strict(),
   z.object({ ...envelope, command: z.literal('shutdown') }).strict(),
 ]);
 export type ServiceRequest = z.infer<typeof serviceRequestSchema>;
@@ -183,6 +234,17 @@ export const serviceResultSchemas = {
   logout: accountStateSchema,
   status: workspaceStatusSchema,
   updatePharmacy: pharmacySchema,
+  backupStatus: backupStatusSchema,
+  backupRotate: z.object({ key: z.string().regex(/^[a-f0-9]{64}$/) }).strict(),
+  backupConfigure: z.object({ key: z.string().regex(/^[a-f0-9]{64}$/) }).strict(),
+  backupUnlock: z.object({ key: z.string().regex(/^[a-f0-9]{64}$/) }).strict(),
+  backupUnlockDevice: z.null(),
+  backupCreate: backupStatusSchema,
+  backupTick: backupStatusSchema,
+  backupExternal: backupStatusSchema,
+  restorePreview: restorePreviewSchema,
+  restoreConfirm: restoreResultSchema,
+  restoreCancel: z.null(),
   shutdown: z.null(),
 };
 export type ServiceData<C extends ServiceCommand['command']> = z.infer<
@@ -195,6 +257,16 @@ export const serviceMessageSchema = z.discriminatedUnion('type', [
 ]);
 
 export interface DesktopApi {
+  openBackupFolder(): Promise<Result<null>>;
+  backupRotate(input: BackupRotation): Promise<Result<BackupStatus>>;
+  backupStatus(): Promise<Result<BackupStatus>>;
+  backupConfigure(input: BackupAccess): Promise<Result<BackupStatus>>;
+  backupUnlock(input: BackupAccess): Promise<Result<BackupStatus>>;
+  backupCreate(): Promise<Result<BackupStatus>>;
+  backupExternal(): Promise<Result<BackupStatus | null>>;
+  restorePreview(input: RestoreInput): Promise<Result<RestorePreview | null>>;
+  restoreConfirm(input: RestoreConfirm): Promise<Result<z.infer<typeof restoreResultSchema>>>;
+  restoreCancel(): Promise<Result<null>>;
   status(): Promise<Result<WorkspaceStatus>>;
   setup(input: Setup): Promise<Result<AccountState>>;
   login(input: Login): Promise<Result<AccountState>>;
@@ -209,6 +281,16 @@ export interface DesktopApi {
   onLifecycle(listener: (state: Lifecycle) => void): () => void;
 }
 export const channels = {
+  openBackupFolder: 'desktop:open-backup-folder',
+  backupRotate: 'desktop:backup-rotate',
+  backupStatus: 'desktop:backup-status',
+  backupConfigure: 'desktop:backup-configure',
+  backupUnlock: 'desktop:backup-unlock',
+  backupCreate: 'desktop:backup-create',
+  backupExternal: 'desktop:backup-external',
+  restorePreview: 'desktop:restore-preview',
+  restoreConfirm: 'desktop:restore-confirm',
+  restoreCancel: 'desktop:restore-cancel',
   status: 'desktop:status',
   setup: 'desktop:setup',
   login: 'desktop:login',

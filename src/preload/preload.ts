@@ -1,6 +1,15 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import { z } from 'zod';
 import {
+  backupStatusSchema,
+  restorePreviewSchema,
+  restoreResultSchema,
+  type BackupAccess,
+  type BackupRotation,
+  type RestoreInput,
+  type RestoreConfirm,
+} from '../contracts/backup';
+import {
   PROTOCOL_VERSION,
   channels,
   workspaceStatusSchema,
@@ -35,14 +44,31 @@ async function invoke<T extends z.ZodType>(
     ok: false,
     code: 'OUTCOME_UNKNOWN',
     message:
-      channel === channels.setup ||
-      channel === channels.recover ||
-      channel === channels.changePassword
-        ? 'The account change may have completed. Restart storage and try signing in with the new password. Keep the recovery code you saved.'
-        : 'The desktop connection was interrupted. A save may have completed. Keep this submission and retry after storage recovers.',
+      channel === channels.backupConfigure || channel === channels.backupRotate
+        ? 'Backup credentials may have changed. Unlock using the new backup passphrase and create a new archive.'
+        : channel === channels.restoreConfirm
+          ? 'Restore may have completed. Restart storage, sign in and check the restored pharmacy.'
+          : channel === channels.setup ||
+              channel === channels.recover ||
+              channel === channels.changePassword
+            ? 'The account change may have completed. Restart storage and try signing in with the new password. Keep the recovery code you saved.'
+            : 'The desktop connection was interrupted. A save may have completed. Keep this submission and retry after storage recovers.',
   };
 }
 const api: DesktopApi = Object.freeze({
+  backupRotate: (input: BackupRotation) => invoke(channels.backupRotate, backupStatusSchema, input),
+  openBackupFolder: () => invoke(channels.openBackupFolder, z.null()),
+  backupStatus: () => invoke(channels.backupStatus, backupStatusSchema),
+  backupConfigure: (input: BackupAccess) =>
+    invoke(channels.backupConfigure, backupStatusSchema, input),
+  backupUnlock: (input: BackupAccess) => invoke(channels.backupUnlock, backupStatusSchema, input),
+  backupCreate: () => invoke(channels.backupCreate, backupStatusSchema),
+  backupExternal: () => invoke(channels.backupExternal, backupStatusSchema.nullable()),
+  restorePreview: (input: RestoreInput) =>
+    invoke(channels.restorePreview, restorePreviewSchema.nullable(), input),
+  restoreConfirm: (input: RestoreConfirm) =>
+    invoke(channels.restoreConfirm, restoreResultSchema, input),
+  restoreCancel: () => invoke(channels.restoreCancel, z.null()),
   status: () => invoke(channels.status, workspaceStatusSchema),
   setup: (input: Setup) => invoke(channels.setup, accountStateSchema, input),
   login: (input: Login) => invoke(channels.login, accountStateSchema, input),

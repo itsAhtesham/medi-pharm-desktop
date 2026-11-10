@@ -2,7 +2,7 @@
 
 Build the desktop application in small, verifiable phases, starting with a working packaged SQLite prototype and ending with tested Windows 10 and 11 installers. Daily development takes place on Linux. The application stores data locally, starts its services when opened, and stops them when closed.
 
-Status updated 10 November 2026: phase 00 awaits Windows testing; phase 01/02 foundation and phase 03/04 storage/owner-access implementation are in progress. Windows gates remain open. Business workflows are not started. See [storage/account evidence](docs/verification/STORAGE_AND_ACCOUNT.md). See [phase 00 evidence](docs/verification/PHASE_00.md) and [foundation evidence](docs/verification/FOUNDATION.md). Original planning date: 8 November 2026.
+Status updated 11 November 2026: foundation, owner access, storage reliability and the first encrypted backup/restore implementation are present. Phases 03–06 remain in progress against their full release gates. Windows verification, future-schema upgrades and business workflows remain open. See [backup/recovery evidence](docs/verification/BACKUP_AND_RECOVERY.md), [storage/account evidence](docs/verification/STORAGE_AND_ACCOUNT.md), and the historical foundation reports. Original planning date: 8 November 2026.
 
 ## Scope and document ownership
 
@@ -19,10 +19,10 @@ The first release serves one pharmacy, one local owner, and one computer. No LAN
 | 00 | Platform decisions and packaged native prototype | None | 0 Platform prototype | In progress; Windows verification pending |
 | 01 | Project foundation and local interface shell | 00 toolchain proof | 1 Desktop foundation | Tooling and shell implemented; production profile and Windows gates pending |
 | 02 | Application lifecycle and restricted IPC | 01 | 1 Desktop foundation | Lifecycle/API/recovery implemented; remaining integration gates pending |
-| 03 | SQLite schema and storage infrastructure | 02 | 2 Storage and account | Initial schema, validation and explicit setup implemented; remaining gates pending |
-| 04 | Owner access and reliable mutation infrastructure | 03 | 2 Storage and account | Owner access and receipt-based settings edits implemented; general business command infrastructure pending |
-| 05 | Encrypted local and external backup creation | 04 | 3 Backup and recovery | Not started |
-| 06 | Restore and migration recovery | 05 | 3 Backup and recovery | Not started |
+| 03 | SQLite schema and storage infrastructure | 02 | 2 Storage and account | Reviewed SQL, health checks, exact value helpers and staged setup implemented; scale/Windows gates pending |
+| 04 | Owner access and reliable mutation infrastructure | 03 | 2 Storage and account | Owner access, shared transaction/receipt/audit pipeline and transactional numbering implemented; workflow integration pending |
+| 05 | Encrypted local and external backup creation | 04 | 3 Backup and recovery | Portable archives, key setup/rotation, scheduling, external copies and retention implemented; release gates pending |
+| 06 | Restore and migration recovery | 05 | 3 Backup and recovery | Preview, safety backup, journaled restore and damaged-data recovery implemented; future migrations/Windows gates pending |
 | 07 | Customer and medicine catalog workflows | 04, 06 | 4 Baseline workflows | Not started |
 | 08 | Medicine supply domain and purchase services | 07 | 4 Baseline workflows | Not started |
 | 09 | Purchase entry and correction interface | 08 | 4 Baseline workflows | Not started |
@@ -57,7 +57,7 @@ Completed task checkboxes below refer to the implemented behavior and linked Lin
 
 - [ ] **P00-01** Record client OS versions, CPU architectures, RAM, storage, and screen resolution. Finalize the proposed Windows 10/11 x64 matrix and its minimum supported OS versions.
 - [ ] **P00-02** Choose stable internal product ID, bundle ID, publisher identity, and data-root names. Keep development identities distinct from production. Record signing account ownership and how native build machines will be accessed.
-- [ ] **P00-03** Pin a compatible Electron, Forge, Vite, TypeScript, Drizzle, better-sqlite3, and pnpm toolchain. Record the embedded Node/SQLite versions and native rebuild requirements. Check experimental integrations against the selected versions.
+- [ ] **P00-03** Pin a compatible Electron, Forge, Vite, TypeScript, better-sqlite3, and pnpm toolchain, plus any subsequently adopted ORM. Record the embedded Node/SQLite versions and native rebuild requirements. Check experimental integrations against the selected versions.
 - [x] **P00-04** Create a disposable or reusable native smoke prototype with a renderer, restricted preload, main process, and utility-process service. Have the service write and reopen a synthetic SQLite record.
 - [ ] **P00-05** Package that prototype on Windows 10 and 11. Verify the native module and service entry point load from the installed artifact, including ASAR/unpacked paths.
 - [ ] **P00-06** Prove raw SQLite snapshot creation/restoration, native file dialogs, platform directory resolution, and protected-key round trips on each target. This proves primitives; it is not the completed encrypted backup product.
@@ -129,12 +129,12 @@ Send malformed, oversized, unknown, and unauthorized IPC requests. Attempt a cal
 ### Implementation tasks
 
 - [ ] **P03-01** Implement platform data-root resolution and directory creation with appropriate OS permissions. Separate live data, runtime cache, settings, logs, backups, staging, and recovery paths.
-- [ ] **P03-02** Implement the service-owned connection, pragma configuration/readback, must-exist handling after setup, and read-only snapshot verification connections. Prohibit multiple uncontrolled writers.
+- [x] **P03-02** Implement the service-owned connection, pragma configuration/readback, must-exist handling after setup, and read-only snapshot verification connections. Prohibit multiple uncontrolled writers.
 - [ ] **P03-03** Implement schema mappings and reviewed initial SQL for metadata, pharmacy/owner, catalog, purchases/items, medicine supplies, follow-ups/events, audit, numbering counters, receipts, and login attempts.
 - [ ] **P03-04** Implement exact quantity parsing/storage, canonical UUID handling, business-date validation, timestamp mappings, JSON versioning, and enum/boolean constraints.
 - [ ] **P03-05** Add indexes and foreign keys from the database plan. Verify cross-record correspondence in service validation where individual foreign keys are insufficient.
 - [x] **P03-06** Build the migration ledger with immutable checksums and the empty-database migration path. Reject a database newer than the app or a changed applied migration. Production upgrades of an existing dataset remain gated on phase 06 recovery.
-- [ ] **P03-07** Define initialization ordering between database commit and installation marker. An interrupted first setup can resume safely; an initialized installation with a missing database enters recovery instead of starting empty.
+- [x] **P03-07** Define initialization ordering between database commit and installation marker. An interrupted first setup can resume safely; an initialized installation with a missing database enters recovery instead of starting empty.
 - [ ] **P03-08** Add synthetic file-backed fixtures, database health inspection, and isolated repository tests. Test code must refuse a production data root.
 
 ### Required verification
@@ -157,9 +157,9 @@ Run migrations from empty, reopen the database, and assert pragma values and sch
 - [x] **P04-02** Implement in-memory sessions bound through the broker to the trusted window. Enforce authorization on reads and writes; clear sessions on exit, service restart, password change, and logout.
 - [x] **P04-03** Implement persistent failed-login throttling and offline owner recovery-code generation, hashing, verification, and rotation. Display recovery instructions without creating a support backdoor.
 - [ ] **P04-04** Build the shared command handler for validation, normalized payload hashing, request IDs, receipt lookup, version checks, transaction execution, audit, revision increment, and post-commit events.
-- [ ] **P04-05** Implement sequence allocation within the business transaction. Preserve display numbers and historical IDs during corrections and cancellations.
+- [x] **P04-05** Implement sequence allocation within the business transaction. Preserve display numbers and historical IDs during corrections and cancellations.
 - [ ] **P04-06** Build the renderer mutation helper: freeze the original payload on submission, preserve the same request ID for uncertain retries, retain an in-memory draft through reauthentication, and surface conflicts for review.
-- [ ] **P04-07** Implement fault-injection hooks in tests around receipt lookup, record updates, commit, and response delivery. Do not ship reset/bypass hooks in customer builds.
+- [x] **P04-07** Implement fault-injection hooks in tests around receipt lookup, record updates, commit, and response delivery. Do not ship reset/bypass hooks in customer builds.
 
 ### Required verification
 
@@ -169,7 +169,9 @@ Prove generic login errors, persistent throttling, account recovery, session exp
 
 **Exit gate:** every protected entry point checks access, and the shared mutation pipeline demonstrates atomic writes and idempotent uncertain retries.
 
-Current phase 03/04 slice: reviewed SQL through better-sqlite3; explicit one-owner setup and verified reopen; bounded scrypt; persistent throttling; rotating recovery; eight-hour service sessions; one protected pharmacy-settings command with atomic receipt/audit/revision, stale-version checks and preserved retry drafts. Drizzle mappings, shared business command extraction, domain date/quantity helpers, cross-record invariants, interrupted-setup resumption, disk fault/load tests, and minimum-Windows-hardware KDF calibration remain open. The current interrupted-setup path preserves files and enters recovery; it does not yet resume automatically. No phase exit gate is declared complete.
+Current storage implementation uses reviewed SQL through better-sqlite3 with typed application projections and a schema-equality check against the immutable migration. This is the authoritative DDL path for this slice; introducing Drizzle alongside it is deferred until a concrete repository need justifies it. Generic receipt/audit/revision transactions and transactional numbering are implemented. Business commands will add their own domain invariants and UI draft helpers as those workflows are built. KDF calibration on minimum Windows hardware remains open.
+
+New setup builds in private staging, then publishes through a flushed replacement journal. A pre-publication interruption permits setup again; once the journal exists, startup completes the verified candidate or blocks safely. Legacy incomplete claims and damaged installations enter explicit recovery. See the current backup/recovery evidence for tested boundaries.
 
 ## Phase 05 Encrypted local and external backup creation
 
@@ -180,13 +182,13 @@ Current phase 03/04 slice: reviewed SQL through better-sqlite3; explicit one-own
 ### Implementation tasks
 
 - [ ] **P05-01** Finalize the versioned archive/header/manifest schemas, maximum sizes, allowed entries, key IDs, and test vectors. Keep identifying business metadata inside the encrypted payload.
-- [ ] **P05-02** Implement backup-passphrase setup, wrapping-key derivation, random master-key generation, authenticated archive encryption, and OS-protected local key storage. Explicitly handle unavailable or unprotected key-store backends.
-- [ ] **P05-03** Implement snapshot jobs using the SQLite backup API. Verify the completed snapshot, then read its revision/counts for the manifest; do not use counts from a changing live database.
+- [x] **P05-02** Implement backup-passphrase setup, wrapping-key derivation, random master-key generation, authenticated archive encryption, and OS-protected local key storage. Explicitly handle unavailable or unprotected key-store backends.
+- [x] **P05-03** Implement snapshot jobs using the SQLite backup API. Verify the completed snapshot, then read its revision/counts for the manifest; do not use counts from a changing live database.
 - [ ] **P05-04** Implement destination selection and validation, private staging, streamed encryption, destination `.partial` writes, readback verification, and final publication. Track success only after verification.
-- [ ] **P05-05** Add external destination identity and reconnection handling. Copy completed encrypted archives with verification; handle changed drive letters/mount names without guessing a destination.
-- [ ] **P05-06** Implement one-job-at-a-time scheduling, startup/resume catch-up, unchanged-data decisions, manual backup, and independent destination history. Handle interrupted/abandoned job state on next launch.
+- [x] **P05-05** Add external destination identity and reconnection handling. Copy completed encrypted archives with verification; handle changed drive letters/mount names without guessing a destination.
+- [x] **P05-06** Implement one-job-at-a-time scheduling, startup/resume catch-up, unchanged-data decisions, manual backup, and independent destination history. Handle interrupted/abandoned job state on next launch.
 - [ ] **P05-07** Implement retention for the proposed 14 daily, 8 weekly, and 3 pre-migration copies. Pin safety copies and preserve the last good archive when a new attempt fails.
-- [ ] **P05-08** Add the backup settings/status screen, progress, error messages, last-success timestamps, and passphrase/key rotation behavior. Make local success distinguishable from external success.
+- [x] **P05-08** Add the backup settings/status screen, progress, error messages, last-success timestamps, and passphrase/key rotation behavior. Make local success distinguishable from external success.
 
 ### Required verification
 
@@ -204,13 +206,13 @@ Create/decrypt a known archive and compare its snapshot data. Test wrong passphr
 
 ### Implementation tasks
 
-- [ ] **P06-01** Build archive inspection and staging extraction with format/version/size checks, authenticated decryption, path traversal rejection, integrity checks, foreign-key checks, and domain validation.
-- [ ] **P06-02** Add first-run restore and authenticated restore of an existing installation. Display snapshot date, dataset identity, version, counts, and replacement consequences before confirmation.
-- [ ] **P06-03** Add the maintenance barrier that stops new commands, drains transactions/jobs, closes all SQLite handles, and creates a verified safety snapshot before replacement.
-- [ ] **P06-04** Implement the flushed restore journal and same-filesystem directory replacement protocol. Define deterministic recovery for interruption before/after moving the old and new directories.
+- [x] **P06-01** Build archive inspection and staging extraction with format/version/size checks, authenticated decryption, path traversal rejection, integrity checks, foreign-key checks, and domain validation.
+- [x] **P06-02** Add first-run restore and authenticated restore of an existing installation. Display snapshot date, dataset identity, version, counts, and replacement consequences before confirmation.
+- [x] **P06-03** Add the maintenance barrier that stops new commands, drains transactions/jobs, closes all SQLite handles, and creates a verified safety snapshot before replacement.
+- [x] **P06-04** Implement the flushed restore journal and same-filesystem directory replacement protocol. Define deterministic recovery for interruption before/after moving the old and new directories.
 - [ ] **P06-05** Reopen and validate the replacement, clear sessions/query caches, preserve device-specific destinations, and recreate protected local keys. Track restored dataset identity separately from local installation identity.
 - [ ] **P06-06** Implement pre-migration snapshots and journaled upgrades for existing datasets. Test transactional rollback and explicit table rebuilds; reject unsupported downgrade/newer-schema writes.
-- [ ] **P06-07** Define the damaged-database recovery path. Preserve original files and do not force an impossible valid safety snapshot or silently erase the damaged dataset. Keep salvage separate from ordinary restore.
+- [x] **P06-07** Define the damaged-database recovery path. Preserve original files and do not force an impossible valid safety snapshot or silently erase the damaged dataset. Keep salvage separate from ordinary restore.
 - [ ] **P06-08** Exercise new-device restore using only the installer, archive, backup passphrase, and owner login/recovery materials. Reconfigure external destinations and verify a new backup afterwards.
 
 ### Required verification
@@ -220,6 +222,10 @@ Interrupt every restore/journal replacement boundary and every migration boundar
 **Outputs:** restore inspection/UI, maintenance barrier, recovery journals, upgrade executor, and cross-platform recovery tests.
 
 **Exit gate:** normal restore, interrupted restore, and failed upgrade all preserve an evidenced recovery route. Existing-data migrations can now be enabled.
+
+The current archive format uses a bounded in-memory frame (64 MiB maximum), not a streamed multi-file container. This caps memory and removes archive-path traversal; streaming/load verification remains part of P05-04. Retention implements 14 daily/8 weekly copies and pins safety archives; pre-migration retention is pending actual migration jobs. Scheduling runs after login, resume and every five minutes while signed in with an unlocked backup key. The main process alone protects keys with Electron safeStorage; unavailable/unprotected backends use memory only.
+
+Normal restore requires a verified safety archive and an unchanged preview revision. Explicit damaged-data recovery retains originals without an impossible valid safety snapshot. An immutable prepared journal plus verified directory locations resolves replacement boundaries. Fresh-device recovery and unavailable-key-store behavior are tested on Linux; Windows-to-Windows recovery and native key protection remain unverified. There is only one supported schema version, so existing-data upgrade execution stays disabled until a concrete migration and its rollback rehearsal exist. Old generations remain retained; an acceptance/cleanup workflow is still pending.
 
 ## Phase 07 Customer and medicine catalog workflows
 

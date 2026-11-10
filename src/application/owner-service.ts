@@ -1,7 +1,8 @@
-import { createHash, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import { PharmacyDatabase, type OwnerRow } from '../db/pharmacy-database';
 import { hashSecret, verifySecret } from './credentials';
 import { ApplicationFailure } from './failure';
+import { mutate } from './mutations';
 import {
   setupSchema,
   loginSchema,
@@ -23,15 +24,21 @@ type Session = { ownerId: string; credentialVersion: number; expires: number; la
 export class OwnerService {
   private session?: Session;
   constructor(
-    readonly store: PharmacyDatabase,
+    public store: PharmacyDatabase,
     private readonly now = Date.now,
   ) {}
   accountState(): AccountState {
+    if (this.store.recoveryRequired) return { state: 'recoveryRequired' };
     if (!this.store.initialized) return { state: 'setupRequired' };
     return { state: this.currentOwner() ? 'ready' : 'locked' };
   }
   async setup(raw: Setup): Promise<AccountState> {
     const input = setupSchema.parse(raw);
+    if (this.store.recoveryRequired)
+      throw new ApplicationFailure(
+        'RECOVERY_REQUIRED',
+        'Preserve the damaged installation and recover it from a verified backup.',
+      );
     if (this.store.initialized)
       throw new ApplicationFailure(
         'CONFLICT',
@@ -157,7 +164,7 @@ export class OwnerService {
     this.session.lastSeen = now;
     return owner;
   }
-  private requireOwner(): OwnerRow {
+  requireOwner(): OwnerRow {
     const owner = this.currentOwner();
     if (!owner)
       throw new ApplicationFailure(
@@ -192,58 +199,40 @@ export class OwnerService {
   }
   updatePharmacy(raw: UpdatePharmacy): { name: string; version: number } {
     const input = updatePharmacySchema.parse(raw);
-    const owner = this.requireOwner();
-    const payloadHash = createHash('sha256')
-      .update(JSON.stringify({ expectedVersion: input.expectedVersion, name: input.name }))
-      .digest('hex');
-    return this.store.db
-      .transaction(() => {
-        this.requireOwner();
-        const prior = this.store.db
-          .prepare(
-            'SELECT command,payload_hash,result_json FROM mutation_receipts WHERE pharmacy_id=? AND actor_id=? AND request_id=?',
-          )
-          .get(owner.pharmacy_id, owner.id, input.requestId) as
-          { command: string; payload_hash: string; result_json: string } | undefined;
-        if (prior) {
-          if (prior.command !== 'pharmacy.update' || prior.payload_hash !== payloadHash)
+    return mutate(
+      this.store.db,
+      () => this.requireOwner(),
+      {
+        requestId: input.requestId,
+        command: 'pharmacy.update',
+        payload: { expectedVersion: input.expectedVersion, name: input.name },
+        result: pharmacySchema,
+        apply: (owner) => {
+          const before = pharmacySchema.parse(
+            this.store.db
+              .prepare('SELECT name,version FROM pharmacies WHERE id=?')
+              .get(owner.pharmacy_id),
+          );
+          if (before.version !== input.expectedVersion)
             throw new ApplicationFailure(
               'CONFLICT',
-              'This submission ID was already used with different details.',
+              'Pharmacy details changed. Reload the saved details and review your draft.',
             );
-          return pharmacySchema.parse(JSON.parse(prior.result_json));
-        }
-        const before = pharmacySchema.parse(
+          const value = { name: input.name, version: before.version + 1 };
           this.store.db
-            .prepare('SELECT name,version FROM pharmacies WHERE id=?')
-            .get(owner.pharmacy_id),
-        );
-        if (before.version !== input.expectedVersion)
-          throw new ApplicationFailure(
-            'CONFLICT',
-            'Pharmacy details changed. Reload the saved details and review your draft.',
-          );
-        const result = { name: input.name, version: before.version + 1 };
-        this.store.db
-          .prepare('UPDATE pharmacies SET name=?,version=?,updated_at=? WHERE id=?')
-          .run(result.name, result.version, this.now(), owner.pharmacy_id);
-        this.audit(owner, 'pharmacy.updated', 'pharmacy', owner.pharmacy_id, before, result);
-        this.bumpRevision();
-        this.store.db
-          .prepare('INSERT INTO mutation_receipts VALUES (?,?,?,?,?,?,?,?)')
-          .run(
-            randomUUID(),
-            owner.pharmacy_id,
-            owner.id,
-            input.requestId,
-            'pharmacy.update',
-            payloadHash,
-            JSON.stringify(result),
-            this.now(),
-          );
-        return result;
-      })
-      .immediate();
+            .prepare('UPDATE pharmacies SET name=?,version=?,updated_at=? WHERE id=?')
+            .run(value.name, value.version, this.now(), owner.pharmacy_id);
+          return {
+            value,
+            entityType: 'pharmacy',
+            entityId: owner.pharmacy_id,
+            before,
+            after: value,
+          };
+        },
+      },
+      this.now,
+    );
   }
   private audit(
     owner: OwnerRow,

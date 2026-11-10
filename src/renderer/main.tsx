@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import type { WorkspaceStatus, Lifecycle, Result, UpdatePharmacy } from '../contracts/desktop';
 import './styles.css';
+import { BackupPanel } from './backup-panel';
 
 const sections = [
   'Overview',
@@ -288,12 +289,27 @@ function App() {
   const [status, setStatus] = useState<WorkspaceStatus | null>(null);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
-  const [busy, setBusy] = useState(false);
+  const [running, setBusy] = useState(false);
   const [draft, setDraft] = useState<{ name: string; expectedVersion: number } | null>(null);
   const [pending, setPending] = useState<UpdatePharmacy | null>(null);
   const [lifecycle, setLifecycle] = useState<Lifecycle | null>(null);
   const lifecycleRef = useRef<Lifecycle | null>(null);
-  const ready = lifecycle?.state === 'ready';
+  const ready = lifecycle?.state === 'ready' || lifecycle?.state === 'maintenance';
+  const busy = running || lifecycle?.state === 'maintenance';
+  const restored = (backupCreated: boolean) => {
+    // Do not discard a new draft if the owner already signed in before this reply.
+    if (lifecycleRef.current?.state !== 'ready') {
+      setDraft(null);
+      setPending(null);
+      setSection('Overview');
+      setStatus(null);
+    }
+    setMessage(
+      backupCreated
+        ? 'Restore completed and a new encrypted backup was verified. Sign in to the restored pharmacy.'
+        : 'Restore completed. A new backup was not created; sign in, unlock backups and create one.',
+    );
+  };
   async function refresh() {
     const revision = lifecycleRef.current?.revision;
     if (lifecycleRef.current?.state !== 'ready') return;
@@ -308,12 +324,16 @@ function App() {
     const accept = (next: Lifecycle) => {
       if (disposed || (lifecycleRef.current && next.revision <= lifecycleRef.current.revision))
         return;
+      if (next.state === 'maintenance' && next.operation === 'restore') {
+        setDraft(null);
+        setPending(null);
+      }
       lifecycleRef.current = next;
       setLifecycle(next);
       setError('');
       setMessage('');
       if (next.state === 'ready') void refresh();
-      else setStatus(null);
+      else if (next.state !== 'maintenance') setStatus(null);
     };
     const unsubscribe = window.mediPharm.onLifecycle(accept);
     const sync = () => {
@@ -437,10 +457,15 @@ function App() {
             <span aria-hidden="true">i</span>
             <p>
               <strong>Development preview.</strong> Owner access and pharmacy settings are
-              available. Business workflows and encrypted backups are still being built. Use test
-              data for now.
+              available. Business workflows are still being built. Encrypted backup and restore are
+              available for testing. Use test data for now.
             </p>
           </div>
+          {lifecycle?.state === 'maintenance' && (
+            <div role="status" className="feedback success">
+              {lifecycle.message}
+            </div>
+          )}
           {error && (
             <div role="alert" className="feedback error">
               {error}
@@ -452,24 +477,33 @@ function App() {
             </div>
           )}
           {lifecycle?.state === 'recoveryRequired' ? (
-            <section role="alert" className="card">
-              <h1>Local storage needs attention</h1>
-              <p>{lifecycle.message}</p>
-              <button
-                className="primary"
-                disabled={busy}
-                onClick={() => void run(() => window.mediPharm.restartStorage())}
-              >
-                Restart storage
-              </button>
-            </section>
+            <>
+              <section role="alert" className="card">
+                <h1>Local storage needs attention</h1>
+                <p>{lifecycle.message}</p>
+                <button
+                  className="primary"
+                  disabled={busy}
+                  onClick={() => void run(() => window.mediPharm.restartStorage())}
+                >
+                  Restart storage
+                </button>
+              </section>
+
+              <BackupPanel fresh disabled={busy} onRestored={restored} />
+            </>
           ) : lifecycle?.state === 'setupRequired' || lifecycle?.state === 'locked' ? (
-            <AccessForm
-              key={lifecycle.state}
-              setup={lifecycle.state === 'setupRequired'}
-              busy={busy}
-              run={run}
-            />
+            <>
+              <AccessForm
+                key={lifecycle.state}
+                setup={lifecycle.state === 'setupRequired'}
+                busy={busy}
+                run={run}
+              />
+              {lifecycle.state === 'setupRequired' && (
+                <BackupPanel fresh disabled={busy} onRestored={restored} />
+              )}
+            </>
           ) : !ready ? (
             <p role="status">{lifecycle?.message ?? 'Starting your local workspace…'}</p>
           ) : (
@@ -513,60 +547,63 @@ function App() {
                   </section>
                 </>
               ) : section === 'Settings' ? (
-                <div className="content-grid">
-                  <section className="card">
-                    <h2>Pharmacy details</h2>
-                    <p className="body-copy">Business dates use Asia/Kolkata.</p>
-                    <form
-                      onSubmit={(e) => {
-                        e.preventDefault();
-                        void savePharmacy();
-                      }}
-                    >
-                      <label htmlFor="settings-name">Pharmacy name</label>
-                      <input
-                        id="settings-name"
-                        maxLength={120}
-                        required
-                        disabled={busy || Boolean(pending)}
-                        value={pending?.name ?? draft?.name ?? status.pharmacy.name}
-                        onChange={(e) =>
-                          setDraft({
-                            name: e.target.value,
-                            expectedVersion: draft?.expectedVersion ?? status.pharmacy.version,
-                          })
-                        }
-                      />
-                      <button
-                        type="submit"
-                        className="primary"
-                        disabled={busy || !draft || !draft.name.trim()}
-                      >
-                        {pending ? 'Retry same save' : 'Save pharmacy details'}
-                      </button>
-                    </form>
-                    {draft && !pending && (
-                      <button
-                        className="text-button"
-                        disabled={busy}
-                        onClick={() => {
-                          setDraft(null);
-                          setError('');
-                          void refresh();
+                <>
+                  <div className="content-grid">
+                    <section className="card">
+                      <h2>Pharmacy details</h2>
+                      <p className="body-copy">Business dates use Asia/Kolkata.</p>
+                      <form
+                        onSubmit={(e) => {
+                          e.preventDefault();
+                          void savePharmacy();
                         }}
                       >
-                        Use saved details
-                      </button>
-                    )}
-                    {pending && (
-                      <p className="body-copy">
-                        This submission is kept unchanged until the save is confirmed. Sign in again
-                        if needed, then retry the same save.
-                      </p>
-                    )}
-                  </section>
-                  <PasswordForm busy={busy} run={run} />
-                </div>
+                        <label htmlFor="settings-name">Pharmacy name</label>
+                        <input
+                          id="settings-name"
+                          maxLength={120}
+                          required
+                          disabled={busy || Boolean(pending)}
+                          value={pending?.name ?? draft?.name ?? status.pharmacy.name}
+                          onChange={(e) =>
+                            setDraft({
+                              name: e.target.value,
+                              expectedVersion: draft?.expectedVersion ?? status.pharmacy.version,
+                            })
+                          }
+                        />
+                        <button
+                          type="submit"
+                          className="primary"
+                          disabled={busy || !draft || !draft.name.trim()}
+                        >
+                          {pending ? 'Retry same save' : 'Save pharmacy details'}
+                        </button>
+                      </form>
+                      {draft && !pending && (
+                        <button
+                          className="text-button"
+                          disabled={busy}
+                          onClick={() => {
+                            setDraft(null);
+                            setError('');
+                            void refresh();
+                          }}
+                        >
+                          Use saved details
+                        </button>
+                      )}
+                      {pending && (
+                        <p className="body-copy">
+                          This submission is kept unchanged until the save is confirmed. Sign in
+                          again if needed, then retry the same save.
+                        </p>
+                      )}
+                    </section>
+                    <PasswordForm busy={busy} run={run} />
+                  </div>
+                  <BackupPanel disabled={busy} onRestored={restored} />
+                </>
               ) : (
                 <section className="card empty-state">
                   <div className="empty-icon" aria-hidden="true">
