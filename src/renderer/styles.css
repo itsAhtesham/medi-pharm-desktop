@@ -486,3 +486,65 @@ footer > span:last-child {
   flex-wrap: wrap;
   flex-shrink: 1;
 }
+
+fieldset {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+.access-card {
+  max-width: 600px;
+  margin: 32px auto;
+}
+.access-card h1 {
+  font-size: 28px;
+}
+.field-help {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+  margin: -5px 0 18px;
+}
+.recovery-code {
+  background: #f0f6f2;
+  padding: 18px;
+  border-radius: 8px;
+  margin: 16px 0;
+}
+.recovery-code p {
+  color: #43594b;
+  font-size: 13px;
+  line-height: 1.6;
+}
+.recovery-code code {
+  display: block;
+  overflow-wrap: anywhere;
+  font-size: 15px;
+  user-select: all;
+}
+.checkbox-label {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  line-height: 1.5;
+  margin-bottom: 20px;
+}
+.checkbox-label input {
+  width: auto;
+  flex: 0 0 auto;
+  margin: 4px 0;
+}
+.text-button {
+  background: transparent;
+  border: none;
+  color: var(--green);
+  text-decoration: underline;
+  padding: 12px 0;
+  font-size: 13px;
+}
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}

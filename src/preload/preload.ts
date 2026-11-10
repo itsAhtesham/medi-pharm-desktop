@@ -3,18 +3,20 @@ import { z } from 'zod';
 import {
   PROTOCOL_VERSION,
   channels,
-  desktopStatusSchema,
+  workspaceStatusSchema,
+  accountStateSchema,
+  pharmacySchema,
   exportSchema,
-  folderSchema,
-  keyProbeSchema,
   lifecycleSchema,
   resultSchema,
-  storageStatusSchema,
-  verificationSchema,
   type DesktopApi,
   type Lifecycle,
   type Result,
-  type SaveRecord,
+  type Setup,
+  type Login,
+  type Recover,
+  type ChangePassword,
+  type UpdatePharmacy,
 } from '../contracts/desktop';
 
 async function invoke<T extends z.ZodType>(
@@ -33,16 +35,22 @@ async function invoke<T extends z.ZodType>(
     ok: false,
     code: 'OUTCOME_UNKNOWN',
     message:
-      'The desktop connection was interrupted. A save may have completed. Keep this submission and retry after storage recovers.',
+      channel === channels.setup ||
+      channel === channels.recover ||
+      channel === channels.changePassword
+        ? 'The account change may have completed. Restart storage and try signing in with the new password. Keep the recovery code you saved.'
+        : 'The desktop connection was interrupted. A save may have completed. Keep this submission and retry after storage recovers.',
   };
 }
 const api: DesktopApi = Object.freeze({
-  status: () => invoke(channels.status, desktopStatusSchema),
-  saveRecord: (input: SaveRecord) => invoke(channels.saveRecord, storageStatusSchema, input),
-  createSnapshot: () => invoke(channels.createSnapshot, verificationSchema),
-  verifyRestore: () => invoke(channels.verifyRestore, verificationSchema),
-  checkKeyStorage: () => invoke(channels.checkKeyStorage, keyProbeSchema),
-  chooseFolder: () => invoke(channels.chooseFolder, folderSchema),
+  status: () => invoke(channels.status, workspaceStatusSchema),
+  setup: (input: Setup) => invoke(channels.setup, accountStateSchema, input),
+  login: (input: Login) => invoke(channels.login, accountStateSchema, input),
+  recover: (input: Recover) => invoke(channels.recover, accountStateSchema, input),
+  changePassword: (input: ChangePassword) =>
+    invoke(channels.changePassword, accountStateSchema, input),
+  logout: () => invoke(channels.logout, accountStateSchema),
+  updatePharmacy: (input: UpdatePharmacy) => invoke(channels.updatePharmacy, pharmacySchema, input),
   lifecycle: () => invoke(channels.lifecycle, lifecycleSchema),
   restartStorage: () => invoke(channels.restartStorage, lifecycleSchema),
   setDraftDirty: (dirty: boolean) => invoke(channels.setDraftDirty, z.null(), dirty),

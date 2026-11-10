@@ -2,7 +2,7 @@
 
 Build the desktop application in small, verifiable phases, starting with a working packaged SQLite prototype and ending with tested Windows 10 and 11 installers. Daily development takes place on Linux. The application stores data locally, starts its services when opened, and stops them when closed.
 
-Status updated 10 November 2026: phase 00 awaits Windows testing; phase 01/02 foundation implementation is in progress. Windows gates remain open. Later business phases are not started. See [phase 00 evidence](docs/verification/PHASE_00.md) and [foundation evidence](docs/verification/FOUNDATION.md). Original planning date: 8 November 2026.
+Status updated 10 November 2026: phase 00 awaits Windows testing; phase 01/02 foundation and phase 03/04 storage/owner-access implementation are in progress. Windows gates remain open. Business workflows are not started. See [storage/account evidence](docs/verification/STORAGE_AND_ACCOUNT.md). See [phase 00 evidence](docs/verification/PHASE_00.md) and [foundation evidence](docs/verification/FOUNDATION.md). Original planning date: 8 November 2026.
 
 ## Scope and document ownership
 
@@ -19,8 +19,8 @@ The first release serves one pharmacy, one local owner, and one computer. No LAN
 | 00 | Platform decisions and packaged native prototype | None | 0 Platform prototype | In progress; Windows verification pending |
 | 01 | Project foundation and local interface shell | 00 toolchain proof | 1 Desktop foundation | Tooling and shell implemented; production profile and Windows gates pending |
 | 02 | Application lifecycle and restricted IPC | 01 | 1 Desktop foundation | Lifecycle/API/recovery implemented; remaining integration gates pending |
-| 03 | SQLite schema and storage infrastructure | 02 | 2 Storage and account | Not started |
-| 04 | Owner access and reliable mutation infrastructure | 03 | 2 Storage and account | Not started |
+| 03 | SQLite schema and storage infrastructure | 02 | 2 Storage and account | Initial schema, validation and explicit setup implemented; remaining gates pending |
+| 04 | Owner access and reliable mutation infrastructure | 03 | 2 Storage and account | Owner access and receipt-based settings edits implemented; general business command infrastructure pending |
 | 05 | Encrypted local and external backup creation | 04 | 3 Backup and recovery | Not started |
 | 06 | Restore and migration recovery | 05 | 3 Backup and recovery | Not started |
 | 07 | Customer and medicine catalog workflows | 04, 06 | 4 Baseline workflows | Not started |
@@ -35,7 +35,7 @@ This is the default sequence, not a requirement to stop at the end of every phas
 
 Native packaging starts in phase 00 and is checked throughout. Phase 11 completes distribution rather than discovering packaging for the first time. Database upgrades on an existing owner installation remain disabled until phase 06 supplies verified pre-migration backup and recovery.
 
-Completed task checkboxes below refer to the implemented behavior and linked Linux evidence. They do not close the Windows platform gates. The reserved setup/locked states will connect to real owner access in phase 04; the current store remains synthetic.
+Completed task checkboxes below refer to the implemented behavior and linked Linux evidence. They do not close the Windows platform gates. Setup/locked states now connect to owner access. The development preview uses a new isolated profile; test-only legacy storage primitives remain in the repository.
 
 ## Execution and completion rules
 
@@ -133,7 +133,7 @@ Send malformed, oversized, unknown, and unauthorized IPC requests. Attempt a cal
 - [ ] **P03-03** Implement schema mappings and reviewed initial SQL for metadata, pharmacy/owner, catalog, purchases/items, medicine supplies, follow-ups/events, audit, numbering counters, receipts, and login attempts.
 - [ ] **P03-04** Implement exact quantity parsing/storage, canonical UUID handling, business-date validation, timestamp mappings, JSON versioning, and enum/boolean constraints.
 - [ ] **P03-05** Add indexes and foreign keys from the database plan. Verify cross-record correspondence in service validation where individual foreign keys are insufficient.
-- [ ] **P03-06** Build the migration ledger with immutable checksums and the empty-database migration path. Reject a database newer than the app or a changed applied migration. Production upgrades of an existing dataset remain gated on phase 06 recovery.
+- [x] **P03-06** Build the migration ledger with immutable checksums and the empty-database migration path. Reject a database newer than the app or a changed applied migration. Production upgrades of an existing dataset remain gated on phase 06 recovery.
 - [ ] **P03-07** Define initialization ordering between database commit and installation marker. An interrupted first setup can resume safely; an initialized installation with a missing database enters recovery instead of starting empty.
 - [ ] **P03-08** Add synthetic file-backed fixtures, database health inspection, and isolated repository tests. Test code must refuse a production data root.
 
@@ -154,8 +154,8 @@ Run migrations from empty, reopen the database, and assert pragma values and sch
 ### Implementation tasks
 
 - [ ] **P04-01** Build offline owner setup and login. Store a salted, versioned scrypt password hash with bounded, benchmarked parameters. Enforce shared password and identifier validation on all credential paths.
-- [ ] **P04-02** Implement in-memory sessions bound through the broker to the trusted window. Enforce authorization on reads and writes; clear sessions on exit, service restart, password change, and logout.
-- [ ] **P04-03** Implement persistent failed-login throttling and offline owner recovery-code generation, hashing, verification, and rotation. Display recovery instructions without creating a support backdoor.
+- [x] **P04-02** Implement in-memory sessions bound through the broker to the trusted window. Enforce authorization on reads and writes; clear sessions on exit, service restart, password change, and logout.
+- [x] **P04-03** Implement persistent failed-login throttling and offline owner recovery-code generation, hashing, verification, and rotation. Display recovery instructions without creating a support backdoor.
 - [ ] **P04-04** Build the shared command handler for validation, normalized payload hashing, request IDs, receipt lookup, version checks, transaction execution, audit, revision increment, and post-commit events.
 - [ ] **P04-05** Implement sequence allocation within the business transaction. Preserve display numbers and historical IDs during corrections and cancellations.
 - [ ] **P04-06** Build the renderer mutation helper: freeze the original payload on submission, preserve the same request ID for uncertain retries, retain an in-memory draft through reauthentication, and surface conflicts for review.
@@ -168,6 +168,8 @@ Prove generic login errors, persistent throttling, account recovery, session exp
 **Outputs:** local account screens/services, session manager, recovery flow, transaction executor, mutation helper, and retry tests.
 
 **Exit gate:** every protected entry point checks access, and the shared mutation pipeline demonstrates atomic writes and idempotent uncertain retries.
+
+Current phase 03/04 slice: reviewed SQL through better-sqlite3; explicit one-owner setup and verified reopen; bounded scrypt; persistent throttling; rotating recovery; eight-hour service sessions; one protected pharmacy-settings command with atomic receipt/audit/revision, stale-version checks and preserved retry drafts. Drizzle mappings, shared business command extraction, domain date/quantity helpers, cross-record invariants, interrupted-setup resumption, disk fault/load tests, and minimum-Windows-hardware KDF calibration remain open. The current interrupted-setup path preserves files and enters recovery; it does not yet resume automatically. No phase exit gate is declared complete.
 
 ## Phase 05 Encrypted local and external backup creation
 

@@ -8,8 +8,8 @@ const packagedExecutable =
   process.env.MEDIPHARM_TEST_EXECUTABLE ??
   path.resolve(
     'out',
-    `MediPharm Prototype-${process.platform}-${process.arch}`,
-    process.platform === 'win32' ? 'medipharm-prototype.exe' : 'medipharm-prototype',
+    `MediPharm Desktop Preview-${process.platform}-${process.arch}`,
+    process.platform === 'win32' ? 'medipharm-preview.exe' : 'medipharm-preview',
   );
 let root: string;
 let app: ElectronApplication | undefined;
@@ -18,7 +18,7 @@ async function launch() {
   app = await electron.launch({
     executablePath: packagedExecutable,
     chromiumSandbox: true,
-    env: { ...process.env, MEDIPHARM_PROTOTYPE_HOME: root },
+    env: { ...process.env, MEDIPHARM_PREVIEW_HOME: root },
     timeout: 20_000,
   });
   return app.firstWindow();
@@ -39,28 +39,72 @@ test.afterEach(async () => {
   await rm(root, { recursive: true, force: true });
 });
 
-test('packaged offline shell persists records and restores a separate snapshot copy', async () => {
+const password = 'local test passphrase';
+async function login(page: import('@playwright/test').Page, secret = password) {
+  await page.getByLabel('Owner identifier').fill('owner');
+  await page.getByLabel('Password', { exact: true }).fill(secret);
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Lock workspace' })).toBeVisible();
+}
+async function setup(page: import('@playwright/test').Page) {
+  await expect(page.getByRole('heading', { name: 'Set up your pharmacy' })).toBeVisible();
+  await page.getByLabel('Pharmacy name', { exact: true }).fill('Test Pharmacy');
+  await page.getByLabel('Owner identifier').fill('owner');
+  await page.getByLabel('New password', { exact: true }).fill(password);
+  await page.getByLabel('Confirm password', { exact: true }).fill(password);
+  const code = (await page.getByTestId('recovery-code').textContent())!;
+  await expect(page.getByRole('button', { name: 'Create pharmacy' })).toBeDisabled();
+  await page.getByRole('checkbox').check();
+  await page.getByRole('button', { name: 'Create pharmacy' }).click();
+  await expect(page.getByRole('heading', { name: 'Welcome back' })).toBeVisible();
+  await login(page);
+  return code;
+}
+
+test('packaged setup, settings save and restart require owner authentication', async () => {
   let page = await launch();
-  await expect(page.getByTestId('record-count')).toHaveText('0');
   expect(page.url()).toBe('medipharm://app/');
-  await page.getByLabel('Sample note').fill('Desktop restart verification');
-  await page.getByRole('button', { name: 'Save sample record' }).click();
-  await expect(page.getByTestId('record-count')).toHaveText('1');
-  await page.getByRole('button', { name: 'Create test snapshot' }).click();
-  await expect(page.getByRole('status')).toContainText('Snapshot verified with 1');
+  await setup(page);
+  await expect(page.getByTestId('customers-count')).toHaveText('0');
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await page.getByLabel('Pharmacy name', { exact: true }).fill('Renamed Pharmacy');
+  await page.getByRole('button', { name: 'Save pharmacy details' }).click();
+  await expect(page.getByRole('status')).toContainText('Pharmacy details saved');
   await app!.close();
   app = undefined;
   page = await launch();
-  await expect(page.getByTestId('last-record')).toHaveText('Desktop restart verification');
-  await expect(page.getByTestId('record-count')).toHaveText('1');
-  await page.getByRole('button', { name: 'Verify restored copy' }).click();
-  await expect(page.getByRole('status')).toContainText('Restore verified: 1');
-  await page.screenshot({ path: 'test-results/prototype-overview.png', fullPage: true });
+  await expect(page.getByRole('heading', { name: 'Welcome back' })).toBeVisible();
+  expect(await page.evaluate(() => window.mediPharm.status())).toMatchObject({ ok: false });
+  await login(page);
+  await expect(page.getByRole('heading', { name: 'Welcome to Renamed Pharmacy' })).toBeVisible();
+  await page.screenshot({ path: 'test-results/owner-overview.png', fullPage: true });
 });
 
-test('renderer is sandboxed and invalid mutations are rejected', async () => {
+test('password change and offline recovery rotate access without losing the pharmacy', async () => {
   const page = await launch();
-  await expect(page.getByTestId('record-count')).toHaveText('0');
+  const code = await setup(page);
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await page.getByLabel('Current password', { exact: true }).fill(password);
+  await page.getByLabel('New password', { exact: true }).fill('changed test passphrase');
+  await page.getByLabel('Confirm new password', { exact: true }).fill('changed test passphrase');
+  await page.getByRole('button', { name: 'Change password', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Welcome back' })).toBeVisible();
+  await page.getByRole('button', { name: 'Forgot password?' }).click();
+  await page.getByLabel('Owner identifier').fill('owner');
+  await page.getByLabel('Saved recovery code', { exact: true }).fill(code);
+  await page.getByLabel('New password', { exact: true }).fill('recovered test passphrase');
+  await page.getByLabel('Confirm password', { exact: true }).fill('recovered test passphrase');
+  expect(await page.getByTestId('recovery-code').textContent()).not.toBe(code);
+  await page.getByRole('checkbox').check();
+  await page.getByRole('button', { name: 'Reset owner password' }).click();
+  await expect(page.getByRole('heading', { name: 'Welcome back' })).toBeVisible();
+  await login(page, 'recovered test passphrase');
+  await expect(page.getByLabel('Pharmacy name', { exact: true })).toHaveValue('Test Pharmacy');
+});
+
+test('renderer is sandboxed, remote requests are blocked and inputs are validated', async () => {
+  const page = await launch();
+  await setup(page);
   const isolated = await page.evaluate(() => ({
     node: typeof (window as unknown as { require?: unknown }).require,
     methods: Object.keys(window.mediPharm),
@@ -69,11 +113,12 @@ test('renderer is sandboxed and invalid mutations are rejected', async () => {
   expect(isolated.methods.sort()).toEqual(
     [
       'status',
-      'saveRecord',
-      'createSnapshot',
-      'verifyRestore',
-      'checkKeyStorage',
-      'chooseFolder',
+      'setup',
+      'login',
+      'recover',
+      'changePassword',
+      'logout',
+      'updatePharmacy',
       'lifecycle',
       'restartStorage',
       'setDraftDirty',
@@ -81,57 +126,62 @@ test('renderer is sandboxed and invalid mutations are rejected', async () => {
       'onLifecycle',
     ].sort(),
   );
-  const bad = await page.evaluate(() =>
-    window.mediPharm.saveRecord({ requestId: 'invalid', note: 'x' }),
-  );
-  expect(bad.ok).toBe(false);
-  const remote = await page.evaluate(async () => {
-    try {
-      await fetch('https://example.com');
-      return true;
-    } catch {
-      return false;
-    }
-  });
-  expect(remote).toBe(false);
-  await page.getByRole('button', { name: 'Customers' }).click();
+  expect(
+    await page.evaluate(() =>
+      window.mediPharm.updatePharmacy({ requestId: 'invalid', name: 'x', expectedVersion: 1 }),
+    ),
+  ).toMatchObject({ code: 'INVALID_REQUEST' });
+  expect(
+    await page.evaluate(async () => {
+      try {
+        await fetch('https://example.com');
+        return true;
+      } catch {
+        return false;
+      }
+    }),
+  ).toBe(false);
+  await page.getByRole('button', { name: 'Customers', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Customers is planned' })).toBeVisible();
 });
 
-test('service death disables writes and an explicit restart preserves the unsaved draft', async () => {
+test('service death requires reauthentication and preserves the unsaved pharmacy draft', async () => {
   const page = await launch();
-  await expect(page.getByTestId('record-count')).toHaveText('0');
-  await page.getByLabel('Sample note').fill('Draft survives a storage crash');
+  await setup(page);
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await page.getByLabel('Pharmacy name', { exact: true }).fill('Draft survives a crash');
   const pid = await app!.evaluate(
     ({ app }) => app.getAppMetrics().find((item) => item.name === 'MediPharm local storage')!.pid,
   );
   process.kill(pid, 'SIGKILL');
-  await expect(page.getByRole('alert')).toContainText('Local storage needs attention');
-  await expect(page.getByRole('button', { name: 'Save sample record' })).toBeDisabled();
-  expect(
-    await page.evaluate(() =>
-      window.mediPharm.saveRecord({ requestId: crypto.randomUUID(), note: 'Blocked' }),
-    ),
-  ).toMatchObject({ code: 'NOT_READY' });
-  await expect(page.getByLabel('Sample note')).toHaveValue('Draft survives a storage crash');
+  await expect(page.getByRole('heading', { name: 'Local storage needs attention' })).toBeVisible();
   await page.getByRole('button', { name: 'Restart storage' }).click();
-  await expect(page.getByRole('button', { name: 'Save sample record' })).toBeEnabled();
-  await expect(page.getByTestId('record-count')).toHaveText('0');
-  await expect(page.getByLabel('Sample note')).toHaveValue('Draft survives a storage crash');
-  await page.getByRole('button', { name: 'Save sample record' }).click();
-  await expect(page.getByTestId('record-count')).toHaveText('1');
+  await login(page);
+  await expect(page.getByLabel('Pharmacy name', { exact: true })).toHaveValue(
+    'Draft survives a crash',
+  );
+  expect(await page.evaluate(() => window.mediPharm.status())).toMatchObject({
+    data: { pharmacy: { name: 'Test Pharmacy', version: 1 } },
+  });
+  await page.getByRole('button', { name: 'Save pharmacy details' }).click();
+  await expect(page.getByRole('status')).toContainText('Pharmacy details saved');
 });
 
-test('unsaved close can be cancelled and discarding exits cleanly', async () => {
+test('locking preserves drafts and unsaved close can be cancelled', async () => {
   const page = await launch();
-  await expect(page.getByTestId('record-count')).toHaveText('0');
-  await page.getByLabel('Sample note').fill('Unsaved draft');
+  await setup(page);
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await page.getByLabel('Pharmacy name', { exact: true }).fill('Unsaved draft');
+  await page.getByRole('button', { name: 'Lock workspace' }).click();
+  await expect(page.getByLabel('Pharmacy name', { exact: true })).toHaveCount(0);
+  await login(page);
+  await expect(page.getByLabel('Pharmacy name', { exact: true })).toHaveValue('Unsaved draft');
   await page.evaluate(() => window.mediPharm.setDraftDirty(true));
   await app!.evaluate(({ dialog, BrowserWindow }) => {
     dialog.showMessageBox = async () => ({ response: 0, checkboxChecked: false });
     BrowserWindow.getAllWindows()[0].close();
   });
-  await expect(page.getByLabel('Sample note')).toHaveValue('Unsaved draft');
+  await expect(page.getByLabel('Pharmacy name', { exact: true })).toHaveValue('Unsaved draft');
   await app!.evaluate(({ dialog }) => {
     dialog.showMessageBox = async () => ({ response: 1, checkboxChecked: false });
   });
@@ -141,12 +191,9 @@ test('unsaved close can be cancelled and discarding exits cleanly', async () => 
   app = undefined;
 });
 
-test('diagnostics export uses a native save selection and omits notes and local paths', async () => {
+test('diagnostics omit pharmacy details, secrets and local paths and refuse overwrites', async () => {
   const page = await launch();
-  await expect(page.getByTestId('record-count')).toHaveText('0');
-  await page.getByLabel('Sample note').fill('Private sample do not log');
-  await page.getByRole('button', { name: 'Save sample record' }).click();
-  await expect(page.getByTestId('record-count')).toHaveText('1');
+  const code = await setup(page);
   const filename = path.join(root, 'diagnostics.json');
   await app!.evaluate(({ dialog }, filePath) => {
     dialog.showSaveDialog = async () => ({ canceled: false, filePath });
@@ -154,8 +201,8 @@ test('diagnostics export uses a native save selection and omits notes and local 
   await page.getByRole('button', { name: 'Save diagnostics' }).click();
   await expect(page.getByRole('status')).toContainText('Diagnostics saved');
   const exported = await readFile(filename, 'utf8');
-  expect(exported).not.toContain('Private sample');
-  expect(exported).not.toContain(root);
+  for (const secret of ['Test Pharmacy', password, code, root])
+    expect(exported).not.toContain(secret);
   expect(JSON.parse(exported).events).toEqual(
     expect.arrayContaining([expect.objectContaining({ event: 'service.ready' })]),
   );
@@ -164,11 +211,10 @@ test('diagnostics export uses a native save selection and omits notes and local 
   expect(await readFile(filename, 'utf8')).toBe(exported);
 });
 
-test('another renderer cannot invoke the main window desktop API', async () => {
+test('another renderer cannot invoke the trusted window API', async () => {
   const page = await launch();
-  await expect(page.getByTestId('record-count')).toHaveText('0');
+  await setup(page);
   const rejected = await app!.evaluate(async ({ BrowserWindow }) => {
-    // Test-only hostile window, never created by the application.
     const foreign = new BrowserWindow({
       show: false,
       webPreferences: { nodeIntegration: true, contextIsolation: false, sandbox: false },
@@ -185,58 +231,54 @@ test('another renderer cannot invoke the main window desktop API', async () => {
   expect(rejected).toMatchObject({ ok: false, code: 'INVALID_REQUEST' });
 });
 
-test('lifecycle listeners unsubscribe and the navigation works by keyboard', async () => {
+test('lifecycle listeners unsubscribe and navigation works by keyboard', async () => {
   const page = await launch();
-  await expect(page.getByTestId('record-count')).toHaveText('0');
+  await setup(page);
   await page.evaluate(() => {
     const events: unknown[] = [];
     (window as unknown as { removedListenerEvents: unknown[] }).removedListenerEvents = events;
     const unsubscribe = window.mediPharm.onLifecycle((event) => events.push(event));
     unsubscribe();
   });
-  await page.getByRole('button', { name: 'Create test snapshot' }).click();
-  await expect(page.getByRole('status')).toContainText('Snapshot verified');
+  await page.getByRole('button', { name: 'Lock workspace' }).click();
+  await login(page);
   expect(
     await page.evaluate(
       () => (window as unknown as { removedListenerEvents: unknown[] }).removedListenerEvents,
     ),
   ).toEqual([]);
-  await page.getByRole('button', { name: 'Overview' }).focus();
-  for (const section of [
-    'Customers',
-    'Medicines',
-    'Purchases',
-    'Follow-ups',
-    'History',
-    'Settings',
-  ]) {
+  await page.getByRole('button', { name: 'Overview', exact: true }).focus();
+  for (const section of ['Customers', 'Medicines', 'Purchases', 'Follow-ups', 'History']) {
     await page.keyboard.press('Tab');
     await page.keyboard.press('Enter');
     await expect(page.getByRole('heading', { name: `${section} is planned` })).toBeVisible();
   }
+  await page.keyboard.press('Tab');
+  await page.keyboard.press('Enter');
+  await expect(page.getByRole('heading', { name: 'Pharmacy details', exact: true })).toBeVisible();
 });
 
-test('a missing initialized database opens a recovery message without replacing it', async () => {
+test('a missing initialized database enters recovery without replacing it', async () => {
   let page = await launch();
-  await expect(page.getByTestId('record-count')).toHaveText('0');
+  await setup(page);
   await app!.close();
   app = undefined;
-  await rm(path.join(root, 'data', 'prototype.sqlite'));
+  await rm(path.join(root, 'data', 'live', 'medipharm.sqlite'));
   page = await launch();
-  await expect(page.getByRole('alert')).toContainText('storage');
-  await expect(page.getByRole('button', { name: 'Save sample record' })).toBeDisabled();
+  await expect(page.getByRole('heading', { name: 'Local storage needs attention' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Create pharmacy' })).toHaveCount(0);
 });
 
-test('a second launch reuses the window and closing it stops the database service', async () => {
+test('second launch reuses the window and closing stops the database service', async () => {
   const page = await launch();
-  await expect(page.getByTestId('record-count')).toHaveText('0');
-  const servicePid = await app!.evaluate(
+  await setup(page);
+  const pid = await app!.evaluate(
     ({ app }) => app.getAppMetrics().find((item) => item.name === 'MediPharm local storage')?.pid,
   );
-  expect(servicePid).toBeDefined();
+  expect(pid).toBeDefined();
   await new Promise<void>((resolve, reject) => {
     const child = spawn(packagedExecutable, [], {
-      env: { ...process.env, MEDIPHARM_PROTOTYPE_HOME: root },
+      env: { ...process.env, MEDIPHARM_PREVIEW_HOME: root },
       stdio: 'ignore',
     });
     const timer = setTimeout(() => {
@@ -261,7 +303,7 @@ test('a second launch reuses the window and closing it stops the database servic
   await expect
     .poll(() => {
       try {
-        process.kill(servicePid!, 0);
+        process.kill(pid!, 0);
         return true;
       } catch {
         return false;

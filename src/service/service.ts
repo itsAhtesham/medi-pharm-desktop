@@ -1,17 +1,19 @@
-import { PrototypeStore } from '../db/prototype-store';
+import { PharmacyDatabase } from '../db/pharmacy-database';
+import { OwnerService } from '../application/owner-service';
+import { ApplicationFailure } from '../application/failure';
 import { PROTOCOL_VERSION, serviceRequestSchema } from '../contracts/desktop';
 
 const port = process.parentPort;
 const parentPid = process.ppid;
 if (!port) throw new Error('This service requires an Electron parent.');
-let store: PrototypeStore;
+let store: OwnerService;
 let queue = Promise.resolve();
 let stopping = false;
 let queued = 0;
 
 try {
-  if (!process.argv[2]) throw new Error('Missing prototype root.');
-  store = new PrototypeStore(process.argv[2]);
+  if (!process.argv[2]) throw new Error('Missing application root.');
+  store = new OwnerService(new PharmacyDatabase(process.argv[2]));
   port.postMessage({ version: PROTOCOL_VERSION, type: 'ready' });
 } catch {
   port.postMessage({ version: PROTOCOL_VERSION, type: 'fatal' });
@@ -44,14 +46,26 @@ port.on('message', (event) => {
         case 'status':
           data = store.status();
           break;
-        case 'save':
-          data = store.save(request.input);
+        case 'accountState':
+          data = store.accountState();
           break;
-        case 'snapshot':
-          data = await store.snapshot();
+        case 'setup':
+          data = await store.setup(request.input);
           break;
-        case 'verifyRestore':
-          data = store.verifyRestore();
+        case 'login':
+          data = await store.login(request.input);
+          break;
+        case 'recover':
+          data = await store.recover(request.input);
+          break;
+        case 'changePassword':
+          data = await store.changePassword(request.input);
+          break;
+        case 'logout':
+          data = store.logout();
+          break;
+        case 'updatePharmacy':
+          data = store.updatePharmacy(request.input);
           break;
         case 'shutdown':
           store.close();
@@ -65,16 +79,18 @@ port.on('message', (event) => {
         result: { ok: true, data },
       });
       if (request.command === 'shutdown') process.exit(0);
-    } catch {
+    } catch (error) {
       port.postMessage({
         version: PROTOCOL_VERSION,
         type: 'result',
         id: request.id,
         result: {
           ok: false,
-          code: 'STORAGE_ERROR',
+          code: error instanceof ApplicationFailure ? error.code : 'STORAGE_ERROR',
           message:
-            'The storage operation failed. Existing records have been preserved. Check the prototype files and available disk space.',
+            error instanceof ApplicationFailure
+              ? error.message
+              : 'The local operation failed. Preserve the data files and check available disk space.',
         },
       });
     } finally {

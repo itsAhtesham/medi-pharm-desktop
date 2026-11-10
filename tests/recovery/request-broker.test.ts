@@ -4,11 +4,14 @@ import type { ServiceRequest } from '../../src/contracts/desktop';
 
 afterEach(() => vi.useRealTimers());
 const data = {
-  recordCount: 0,
-  lastRecord: null,
+  pharmacy: { name: 'Test Pharmacy', version: 1 },
+  identifier: 'owner',
+  customers: 0,
+  medicines: 0,
+  purchases: 0,
+  revision: 0,
   sqliteVersion: '3.53.4',
   journalMode: 'wal',
-  snapshotExists: false,
 };
 
 describe('transport failures and uncertain results', () => {
@@ -19,12 +22,12 @@ describe('transport failures and uncertain results', () => {
       () => {},
     );
     const first = broker.request({ command: 'status' });
-    const second = broker.request({ command: 'verifyRestore' });
+    const second = broker.request({ command: 'accountState' });
     broker.receive({
       version: 1,
       type: 'result',
       id: requests[1].id,
-      result: { ok: true, data: { recordCount: 3, checkedAt: new Date().toISOString() } },
+      result: { ok: true, data: { state: 'locked' } },
     });
     broker.receive({ version: 1, type: 'result', id: requests[0].id, result: { ok: true, data } });
     expect((await first).ok).toBe(true);
@@ -36,8 +39,8 @@ describe('transport failures and uncertain results', () => {
     const fault = vi.fn();
     const broker = new RequestBroker(send, fault, 100);
     const result = broker.request({
-      command: 'save',
-      input: { requestId: crypto.randomUUID(), note: 'Sample' },
+      command: 'updatePharmacy',
+      input: { requestId: crypto.randomUUID(), name: 'Sample', expectedVersion: 1 },
     });
     await vi.advanceTimersByTimeAsync(101);
     expect(await result).toMatchObject({ ok: false, code: 'OUTCOME_UNKNOWN' });

@@ -2,36 +2,49 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { expect, it } from 'vitest';
-import { PrototypeStore } from '../../src/db/prototype-store';
+import { PharmacyDatabase } from '../../src/db/pharmacy-database';
+import { OwnerService } from '../../src/application/owner-service';
 import { RequestBroker } from '../../src/application/request-broker';
 import type { ServiceRequest } from '../../src/contracts/desktop';
 
-it('replays a committed save exactly once after its response is lost and the database reopens', async () => {
+it('replays one committed mutation after reply loss, service restart and reauthentication', async () => {
   const root = mkdtempSync(path.join(tmpdir(), 'medipharm-lost-save-'));
-  let store: PrototypeStore | undefined;
+  let service = new OwnerService(new PharmacyDatabase(root));
+  const credentials = {
+    pharmacyName: 'Test',
+    identifier: 'owner',
+    password: 'test passphrase',
+    recoveryCode: 'ab'.repeat(32),
+  };
   try {
-    store = new PrototypeStore(root);
-    const input = { requestId: crypto.randomUUID(), note: 'Saved but response lost' };
+    await service.setup(credentials);
+    await service.login({ identifier: credentials.identifier, password: credentials.password });
+    const input = {
+      requestId: crypto.randomUUID(),
+      name: 'Saved but response lost',
+      expectedVersion: 1,
+    };
     const first = new RequestBroker(
       (raw) => {
         const request = raw as ServiceRequest;
-        if (request.command === 'save') store!.save(request.input);
-        // Simulate death after SQLite commits but before IPC delivers success.
+        if (request.command === 'updatePharmacy') service.updatePharmacy(request.input);
       },
       () => {},
     );
-    const uncertain = first.request({ command: 'save', input });
+    const uncertain = first.request({ command: 'updatePharmacy', input });
     first.close();
     expect(await uncertain).toMatchObject({ code: 'OUTCOME_UNKNOWN' });
-    store.close();
-    store = new PrototypeStore(root);
-    const replay = store.save(input);
-    expect(replay.recordCount).toBe(1);
-    expect(replay.lastRecord?.note).toBe(input.note);
-    expect(() => store!.save({ ...input, note: 'Changed frozen payload' })).toThrow();
-    expect(store.status().recordCount).toBe(1);
+    service.close();
+    service = new OwnerService(new PharmacyDatabase(root));
+    expect(() => service.updatePharmacy(input)).toThrow('Sign in');
+    await service.login({ identifier: credentials.identifier, password: credentials.password });
+    expect(service.updatePharmacy(input)).toEqual({ name: input.name, version: 2 });
+    expect(service.status().revision).toBe(1);
+    expect(service.store.db.prepare('SELECT count(*) FROM mutation_receipts').pluck().get()).toBe(
+      1,
+    );
   } finally {
-    store?.close();
+    service.close();
     rmSync(root, { recursive: true, force: true });
   }
 });

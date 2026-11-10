@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import type { DesktopStatus, Lifecycle, Result, SaveRecord } from '../contracts/desktop';
+import type { WorkspaceStatus, Lifecycle, Result, UpdatePharmacy } from '../contracts/desktop';
 import './styles.css';
 
 const sections = [
@@ -13,38 +13,295 @@ const sections = [
   'Settings',
 ] as const;
 type Section = (typeof sections)[number];
-const descriptions: Record<Section, string> = {
-  Overview: 'A fresh start for your pharmacy desktop.',
-  Customers: 'Customer details, search, and purchase history will be built here.',
-  Medicines: 'Your medicine catalog, including strength and form, will be built here.',
-  Purchases: 'Purchase entry and independent medicine supply estimates will be built here.',
-  'Follow-ups': 'Due reminders, contact history, and refill follow-ups will be built here.',
-  History: 'Purchase corrections, cancellations, and dated activity will be built here.',
-  Settings: 'Local owner access, pharmacy settings, backups, and CSV exports will be built here.',
-};
+type Run = <T>(
+  action: () => Promise<Result<T>>,
+  message?: string | ((value: T) => string),
+) => Promise<boolean>;
+function recoveryCode(): string {
+  return Array.from(crypto.getRandomValues(new Uint8Array(32)), (value) =>
+    value.toString(16).padStart(2, '0'),
+  ).join('');
+}
+
+function AccessForm({ setup, busy, run }: { setup: boolean; busy: boolean; run: Run }) {
+  const [recover, setRecover] = useState(false);
+  const [identifier, setIdentifier] = useState('');
+  const [name, setName] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirmation, setConfirmation] = useState('');
+  const [oldCode, setOldCode] = useState('');
+  const [code, setCode] = useState(recoveryCode);
+  const [acknowledged, setAcknowledged] = useState(false);
+  const [localError, setLocalError] = useState('');
+  const creating = setup || recover;
+  return (
+    <section className="card access-card">
+      <p className="eyebrow">ONE PHARMACY · ONE LOCAL OWNER</p>
+      <h1>{setup ? 'Set up your pharmacy' : recover ? 'Recover owner access' : 'Welcome back'}</h1>
+      <p className="subtitle">
+        {setup
+          ? 'Create your owner account. Your workspace starts empty.'
+          : recover
+            ? 'Use your saved recovery code to choose a new password.'
+            : 'Sign in to the pharmacy saved on this computer.'}
+      </p>
+      {localError && (
+        <p role="alert" className="feedback error">
+          {localError}
+        </p>
+      )}
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          setLocalError('');
+          if (creating && password !== confirmation) {
+            setLocalError('The passwords do not match.');
+            return;
+          }
+          void (async () => {
+            const success = await run(
+              () =>
+                setup
+                  ? window.mediPharm.setup({
+                      pharmacyName: name,
+                      identifier,
+                      password,
+                      recoveryCode: code,
+                    })
+                  : recover
+                    ? window.mediPharm.recover({
+                        identifier,
+                        password,
+                        recoveryCode: oldCode,
+                        newRecoveryCode: code,
+                      })
+                    : window.mediPharm.login({ identifier, password }),
+              creating ? 'Account saved. Sign in with your owner identifier and password.' : '',
+            );
+            // Clear secrets after every attempt; never put them in browser storage.
+            setPassword('');
+            setConfirmation('');
+            setOldCode('');
+            if (success && recover) {
+              setRecover(false);
+              setCode(recoveryCode());
+              setAcknowledged(false);
+            }
+          })();
+        }}
+      >
+        <fieldset disabled={busy}>
+          {setup && (
+            <>
+              <label htmlFor="pharmacy-name">Pharmacy name</label>
+              <input
+                id="pharmacy-name"
+                required
+                maxLength={120}
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+              />
+            </>
+          )}
+          <label htmlFor="owner-id">Owner identifier</label>
+          <input
+            id="owner-id"
+            autoComplete="username"
+            required
+            minLength={3}
+            maxLength={80}
+            pattern="[A-Za-z0-9._\-]{3,80}"
+            value={identifier}
+            onChange={(e) => setIdentifier(e.target.value)}
+            aria-describedby="owner-help"
+          />
+          <p id="owner-help" className="field-help">
+            Use letters, numbers, dots, underscores or hyphens. This is not an email account.
+          </p>
+          {recover && (
+            <>
+              <label htmlFor="old-code">Saved recovery code</label>
+              <input
+                id="old-code"
+                autoComplete="off"
+                required
+                pattern="[a-f0-9]{64}"
+                value={oldCode}
+                onChange={(e) => setOldCode(e.target.value.trim().toLowerCase())}
+              />
+            </>
+          )}
+          <label htmlFor="password">{creating ? 'New password' : 'Password'}</label>
+          <input
+            id="password"
+            type="password"
+            autoComplete={creating ? 'new-password' : 'current-password'}
+            required
+            minLength={creating ? 12 : 1}
+            maxLength={128}
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+          />
+          {creating && (
+            <>
+              <p className="field-help">
+                Use 12–128 characters. Spaces are kept exactly as entered.
+              </p>
+              <label htmlFor="password-confirmation">Confirm password</label>
+              <input
+                id="password-confirmation"
+                type="password"
+                autoComplete="new-password"
+                required
+                maxLength={128}
+                value={confirmation}
+                onChange={(e) => setConfirmation(e.target.value)}
+              />
+              <div className="recovery-code">
+                <h2>{recover ? 'Your replacement recovery code' : 'Save your recovery code'}</h2>
+                <p>
+                  Write this code down and keep it somewhere private, separate from this computer.
+                  It is the only offline way to reset a forgotten password.
+                  {recover && ' Your old code stops working after recovery.'}
+                </p>
+                <code data-testid="recovery-code">{code}</code>
+              </div>
+              <label className="checkbox-label">
+                <input
+                  type="checkbox"
+                  checked={acknowledged}
+                  onChange={(e) => setAcknowledged(e.target.checked)}
+                />
+                I have saved this recovery code somewhere safe
+              </label>
+            </>
+          )}
+          <button className="primary" type="submit" disabled={creating && !acknowledged}>
+            {busy
+              ? 'Please wait…'
+              : setup
+                ? 'Create pharmacy'
+                : recover
+                  ? 'Reset owner password'
+                  : 'Sign in'}
+          </button>
+        </fieldset>
+      </form>
+      {!setup && (
+        <button
+          className="text-button"
+          disabled={busy}
+          onClick={() => {
+            setRecover(!recover);
+            setPassword('');
+            setConfirmation('');
+            setOldCode('');
+            setLocalError('');
+            setCode(recoveryCode());
+            setAcknowledged(false);
+          }}
+        >
+          {recover ? 'Back to sign in' : 'Forgot password?'}
+        </button>
+      )}
+    </section>
+  );
+}
+
+function PasswordForm({ busy, run }: { busy: boolean; run: Run }) {
+  const [current, setCurrent] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirm, setConfirm] = useState('');
+  const [error, setError] = useState('');
+  return (
+    <section className="card">
+      <h2>Change owner password</h2>
+      <p className="body-copy">
+        Changing your password signs you out. Your saved recovery code stays valid.
+      </p>
+      {error && (
+        <p role="alert" className="feedback error">
+          {error}
+        </p>
+      )}
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          setError('');
+          if (password !== confirm) {
+            setError('The passwords do not match.');
+            return;
+          }
+          void run(
+            () => window.mediPharm.changePassword({ currentPassword: current, password }),
+            'Password changed. Sign in with your new password.',
+          ).then(() => {
+            setCurrent('');
+            setPassword('');
+            setConfirm('');
+          });
+        }}
+      >
+        <fieldset disabled={busy}>
+          <label htmlFor="current-password">Current password</label>
+          <input
+            id="current-password"
+            required
+            type="password"
+            autoComplete="current-password"
+            value={current}
+            maxLength={128}
+            onChange={(e) => setCurrent(e.target.value)}
+          />
+          <label htmlFor="new-password">New password</label>
+          <input
+            id="new-password"
+            required
+            type="password"
+            autoComplete="new-password"
+            minLength={12}
+            maxLength={128}
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+          />
+          <label htmlFor="confirm-new">Confirm new password</label>
+          <input
+            id="confirm-new"
+            required
+            type="password"
+            autoComplete="new-password"
+            value={confirm}
+            maxLength={128}
+            onChange={(e) => setConfirm(e.target.value)}
+          />
+          <button className="secondary" type="submit">
+            Change password
+          </button>
+        </fieldset>
+      </form>
+    </section>
+  );
+}
 
 function App() {
   const [section, setSection] = useState<Section>('Overview');
-  const [status, setStatus] = useState<DesktopStatus | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [status, setStatus] = useState<WorkspaceStatus | null>(null);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
-  const [note, setNote] = useState('My first desktop test');
-  const [pendingSave, setPendingSave] = useState<SaveRecord | null>(null);
-  const [savedDraft, setSavedDraft] = useState('My first desktop test');
+  const [draft, setDraft] = useState<{ name: string; expectedVersion: number } | null>(null);
+  const [pending, setPending] = useState<UpdatePharmacy | null>(null);
   const [lifecycle, setLifecycle] = useState<Lifecycle | null>(null);
   const lifecycleRef = useRef<Lifecycle | null>(null);
-  const canWrite = lifecycle?.state === 'ready';
-
+  const ready = lifecycle?.state === 'ready';
   async function refresh() {
     const revision = lifecycleRef.current?.revision;
+    if (lifecycleRef.current?.state !== 'ready') return;
     const result = await window.mediPharm.status();
     if (lifecycleRef.current?.revision !== revision || lifecycleRef.current?.state !== 'ready')
       return;
     if (result.ok) setStatus(result.data);
     else setError(result.message);
-    setLoading(false);
   }
   useEffect(() => {
     let disposed = false;
@@ -53,72 +310,72 @@ function App() {
         return;
       lifecycleRef.current = next;
       setLifecycle(next);
+      setError('');
+      setMessage('');
       if (next.state === 'ready') void refresh();
-      else if (next.state === 'recoveryRequired') {
-        setStatus(null);
-        setLoading(false);
-        setError('');
-      }
+      else setStatus(null);
     };
     const unsubscribe = window.mediPharm.onLifecycle(accept);
-    void window.mediPharm.lifecycle().then((result) => {
-      if (result.ok) accept(result.data);
-      else setError(result.message);
-    });
-    const refocus = () => {
+    const sync = () => {
       void window.mediPharm.lifecycle().then((result) => {
+        if (disposed) return;
         if (result.ok) {
           accept(result.data);
           if (result.data.state === 'ready') void refresh();
-        }
+        } else setError(result.message);
       });
     };
-    window.addEventListener('focus', refocus);
+    sync();
+    window.addEventListener('focus', sync);
     return () => {
       disposed = true;
       unsubscribe();
-      window.removeEventListener('focus', refocus);
+      window.removeEventListener('focus', sync);
       lifecycleRef.current = null;
     };
   }, []);
   useEffect(() => {
-    void window.mediPharm.setDraftDirty(Boolean(pendingSave) || note.trim() !== savedDraft.trim());
-  }, [note, savedDraft, pendingSave]);
-
-  async function run<T>(action: () => Promise<Result<T>>, describe: (value: T) => string) {
+    void window.mediPharm.setDraftDirty(Boolean(draft) || Boolean(pending));
+  }, [draft, pending]);
+  const run: Run = async (action, successMessage = '') => {
     setBusy(true);
     setError('');
     setMessage('');
     try {
       const result = await action();
       if (result.ok) {
-        setMessage(describe(result.data));
+        setMessage(
+          typeof successMessage === 'function' ? successMessage(result.data) : successMessage,
+        );
         await refresh();
-      } else setError(result.message);
+        return true;
+      }
+      setError(result.message);
+      return false;
     } catch {
-      setError('The desktop service could not respond. Please restart the prototype.');
+      setError('The desktop connection was interrupted. Reopen local storage before continuing.');
+      return false;
     } finally {
       setBusy(false);
     }
+  };
+  async function savePharmacy() {
+    if (!status || !draft) return;
+    const submission = pending ?? {
+      ...draft,
+      name: draft.name.trim(),
+      requestId: crypto.randomUUID(),
+    };
+    setPending(submission);
+    await run(async () => {
+      const result = await window.mediPharm.updatePharmacy(submission);
+      if (result.ok) {
+        setPending(null);
+        setDraft(null);
+      } else if (result.code === 'CONFLICT' || result.code === 'INVALID_REQUEST') setPending(null);
+      return result;
+    }, 'Pharmacy details saved on this computer.');
   }
-
-  async function save() {
-    const submission = pendingSave ?? { requestId: crypto.randomUUID(), note: note.trim() };
-    setPendingSave(submission);
-    await run(
-      async () => {
-        const result = await window.mediPharm.saveRecord(submission);
-        if (result.ok) {
-          setPendingSave(null);
-          setNote(submission.note);
-          setSavedDraft(submission.note);
-        } else if (result.code === 'INVALID_REQUEST' && !pendingSave) setPendingSave(null);
-        return result;
-      },
-      () => 'Sample saved on this computer. Close and reopen the app to check it is still here.',
-    );
-  }
-
   return (
     <div className="app-shell">
       <aside className="sidebar">
@@ -135,6 +392,7 @@ function App() {
           {sections.map((item, index) => (
             <button
               key={item}
+              disabled={!ready}
               aria-current={section === item ? 'page' : undefined}
               onClick={() => setSection(item)}
             >
@@ -142,288 +400,205 @@ function App() {
                 {String(index + 1).padStart(2, '0')}
               </span>
               {item}
-              {item !== 'Overview' && <span className="soon-dot" aria-label="Planned" />}
             </button>
           ))}
         </nav>
         <div className="sidebar-bottom">
-          <span className="status-dot" /> Local workspace
+          <span className="status-dot" />
+          Offline by design
           <small>
             Windows 10 & 11
             <br />
-            Developed on Linux
+            Development preview
           </small>
         </div>
       </aside>
       <div className="main-layout">
         <header className="topbar">
           <div>
-            Workspace <span>/</span> <strong>{section}</strong>
+            {ready ? (status?.pharmacy.name ?? 'Your pharmacy') : 'Local owner access'}{' '}
+            <span>/</span> <strong>{ready ? section : 'MediPharm'}</strong>
           </div>
-          <span className="prototype-badge">PLATFORM PROTOTYPE</span>
-        </header>
-        <main>
-          <div className="page-heading">
-            <div>
-              <p className="eyebrow">MADE FOR YOUR COMPUTER</p>
-              <h1>{section === 'Overview' ? 'Your pharmacy, locally.' : section}</h1>
-              <p className="subtitle">{descriptions[section]}</p>
-            </div>
-            <div className="offline-badge">
-              <span className="status-dot" /> Offline by design
-            </div>
-          </div>
-          <div className="notice">
-            <span aria-hidden="true">i</span>
-            <p>
-              <strong>This is the first desktop prototype.</strong> Use synthetic notes only.
-              Pharmacy workflows, owner login, and encrypted backups are not available yet.
-            </p>
-          </div>
-          {lifecycle?.state === 'recoveryRequired' && (
-            <div role="alert" className="feedback error recovery-panel">
-              <div>
-                <strong>Local storage needs attention</strong>
-                <p>{lifecycle.message}</p>
-              </div>
+          <div className="header-actions">
+            <span className="prototype-badge">DEVELOPMENT PREVIEW</span>
+            {ready && (
               <button
                 className="secondary"
                 disabled={busy}
-                onClick={() =>
-                  void run(
-                    () => window.mediPharm.restartStorage(),
-                    (result) =>
-                      result.state === 'ready'
-                        ? 'Storage restarted. Review your draft before saving.'
-                        : result.message,
-                  )
-                }
+                onClick={() => void run(() => window.mediPharm.logout())}
               >
-                Restart storage
+                Lock workspace
               </button>
-            </div>
-          )}
-          {lifecycle?.state === 'maintenance' && (
-            <div role="status" className="feedback success">
-              {lifecycle.message}
-            </div>
-          )}
-          {error && lifecycle?.state !== 'recoveryRequired' && (
+            )}
+          </div>
+        </header>
+        <main>
+          <div className="notice">
+            <span aria-hidden="true">i</span>
+            <p>
+              <strong>Development preview.</strong> Owner access and pharmacy settings are
+              available. Business workflows and encrypted backups are still being built. Use test
+              data for now.
+            </p>
+          </div>
+          {error && (
             <div role="alert" className="feedback error">
               {error}
             </div>
           )}
-          {message && lifecycle?.state !== 'maintenance' && (
+          {message && (
             <div role="status" className="feedback success">
               {message}
             </div>
           )}
-          {section !== 'Overview' ? (
-            <section className="card empty-state">
-              <div className="empty-icon" aria-hidden="true">
-                ◇
-              </div>
-              <p className="eyebrow">COMING IN A LATER PHASE</p>
-              <h2>{section} is planned</h2>
-              <p>
-                {descriptions[section]}
-                <br />
-                No business records have been created.
-              </p>
-              <button className="primary" onClick={() => setSection('Overview')}>
-                Back to prototype checks
+          {lifecycle?.state === 'recoveryRequired' ? (
+            <section role="alert" className="card">
+              <h1>Local storage needs attention</h1>
+              <p>{lifecycle.message}</p>
+              <button
+                className="primary"
+                disabled={busy}
+                onClick={() => void run(() => window.mediPharm.restartStorage())}
+              >
+                Restart storage
               </button>
             </section>
+          ) : lifecycle?.state === 'setupRequired' || lifecycle?.state === 'locked' ? (
+            <AccessForm
+              key={lifecycle.state}
+              setup={lifecycle.state === 'setupRequired'}
+              busy={busy}
+              run={run}
+            />
+          ) : !ready ? (
+            <p role="status">{lifecycle?.message ?? 'Starting your local workspace…'}</p>
           ) : (
             <>
-              <div className="summary-grid">
-                <article className="summary-card">
-                  <p>Local storage</p>
-                  <strong>
-                    {lifecycle?.state === 'maintenance'
-                      ? 'Working…'
-                      : loading || lifecycle?.state === 'starting'
-                        ? 'Connecting…'
-                        : canWrite && status
-                          ? 'Connected'
-                          : 'Unavailable'}
-                  </strong>
-                  <span>
-                    {status
-                      ? `SQLite ${status.sqliteVersion} · ${status.journalMode.toUpperCase()}`
-                      : 'Dedicated local service'}
-                  </span>
-                </article>
-                <article className="summary-card">
-                  <p>Saved sample records</p>
-                  <strong data-testid="record-count">{status?.recordCount ?? '—'}</strong>
-                  <span>Synthetic prototype data only</span>
-                </article>
-                <article className="summary-card">
-                  <p>Release target</p>
-                  <strong>Windows 10 / 11</strong>
-                  <span>
-                    {status
-                      ? `Running on ${status.platform} · ${status.architecture}`
-                      : 'Windows x64 planned'}
-                  </span>
-                </article>
-              </div>
-              <div className="content-grid">
-                <section className="card">
-                  <div className="card-title">
-                    <span className="step">01</span>
-                    <div>
-                      <h2>Check local persistence</h2>
-                      <p>Save a sample, then close and reopen the app.</p>
-                    </div>
-                  </div>
-                  <form
-                    onSubmit={(event) => {
-                      event.preventDefault();
-                      void save();
-                    }}
-                  >
-                    <label htmlFor="sample-note">Sample note</label>
-                    <input
-                      id="sample-note"
-                      maxLength={160}
-                      required
-                      value={pendingSave?.note ?? note}
-                      disabled={busy || Boolean(pendingSave)}
-                      onChange={(event) => setNote(event.target.value)}
-                    />
-                    <button
-                      className="primary"
-                      disabled={busy || !canWrite || !status || !note.trim()}
-                      type="submit"
-                    >
-                      {pendingSave ? 'Retry same save' : 'Save sample record'}
-                      <span aria-hidden="true">↗</span>
-                    </button>
-                  </form>
-                  <div className="saved-record">
-                    <span className="small-label">LATEST SAVED SAMPLE</span>
-                    <p data-testid="last-record">
-                      {status?.lastRecord?.note ?? 'Nothing saved yet'}
-                    </p>
-                    <small>
-                      {status?.lastRecord
-                        ? new Date(status.lastRecord.savedAt).toLocaleString()
-                        : 'Your first sample will appear here.'}
-                    </small>
-                  </div>
-                </section>
-                <section className="card">
-                  <div className="card-title">
-                    <span className="step">02</span>
-                    <div>
-                      <h2>Check snapshot & restore</h2>
-                      <p>Test the storage primitives with synthetic data.</p>
-                    </div>
-                  </div>
-                  <p className="body-copy">
-                    Create a raw SQLite snapshot, then open a restored copy in a separate temporary
-                    location. Your live sample records stay in place.
-                  </p>
-                  <div className="stacked-actions">
-                    <button
-                      className="secondary"
-                      disabled={busy || !canWrite || !status}
-                      onClick={() =>
-                        void run(
-                          () => window.mediPharm.createSnapshot(),
-                          (result) =>
-                            `Snapshot verified with ${result.recordCount} sample records.`,
-                        )
-                      }
-                    >
-                      Create test snapshot <span aria-hidden="true">↓</span>
-                    </button>
-                    <button
-                      className="secondary"
-                      disabled={busy || !canWrite || !status?.snapshotExists}
-                      onClick={() =>
-                        void run(
-                          () => window.mediPharm.verifyRestore(),
-                          (result) =>
-                            `Restore verified: ${result.recordCount} sample records opened from a separate copy.`,
-                        )
-                      }
-                    >
-                      Verify restored copy <span aria-hidden="true">↗</span>
-                    </button>
-                  </div>
-                  <p className="footnote">
-                    Raw snapshots are unencrypted. This is not the pharmacy backup feature.
-                  </p>
-                </section>
-              </div>
-              <section className="card device-card">
+              <div className="page-heading">
                 <div>
-                  <h2>Device checks</h2>
-                  <p>Verify native capabilities before building the business workflows.</p>
+                  <p className="eyebrow">YOUR PHARMACY, LOCALLY</p>
+                  <h1>{section === 'Overview' ? 'A fresh start.' : section}</h1>
+                  <p className="subtitle">
+                    {section === 'Overview'
+                      ? 'Your workspace is ready for the next steps.'
+                      : section === 'Settings'
+                        ? 'Manage your pharmacy and local owner access.'
+                        : 'This workflow is planned for a later implementation phase.'}
+                  </p>
                 </div>
-                <div className="device-actions">
-                  <button
-                    className="secondary"
-                    disabled={busy || !canWrite}
-                    onClick={() =>
-                      void run(
-                        () => window.mediPharm.checkKeyStorage(),
-                        (result) => result.message,
-                      )
-                    }
-                  >
-                    Check protected key storage
-                  </button>
-                  <button
-                    className="secondary"
-                    disabled={busy || !canWrite}
-                    onClick={() =>
-                      void run(
-                        () => window.mediPharm.chooseFolder(),
-                        (result) =>
-                          result
-                            ? `Folder picker worked: ${result.name}. No files were written there.`
-                            : 'Folder selection cancelled.',
-                      )
-                    }
-                  >
-                    Open folder picker
-                  </button>
-                  <button
-                    className="secondary"
-                    disabled={busy}
-                    onClick={() =>
-                      void run(
-                        () => window.mediPharm.exportDiagnostics(),
-                        (result) =>
-                          result.saved
-                            ? 'Diagnostics saved. The file contains only technical event names and times.'
-                            : 'Diagnostics export cancelled.',
-                      )
-                    }
-                  >
-                    Save diagnostics
-                  </button>
+              </div>
+              {!status ? (
+                <p role="status">Loading pharmacy details…</p>
+              ) : section === 'Overview' ? (
+                <>
+                  <div className="summary-grid">
+                    {(['customers', 'medicines', 'purchases'] as const).map((kind) => (
+                      <article className="summary-card" key={kind}>
+                        <p>{kind[0].toUpperCase() + kind.slice(1)}</p>
+                        <strong data-testid={`${kind}-count`}>{status[kind]}</strong>
+                        <span>No sample records are imported</span>
+                      </article>
+                    ))}
+                  </div>
+                  <section className="card">
+                    <h2>Welcome to {status.pharmacy.name}</h2>
+                    <p className="body-copy">
+                      You are signed in as <strong>{status.identifier}</strong>. Customer records,
+                      medicine supplies and follow-ups will be added in the upcoming business
+                      workflow phases.
+                    </p>
+                    <button className="primary" onClick={() => setSection('Settings')}>
+                      Open pharmacy settings
+                    </button>
+                  </section>
+                </>
+              ) : section === 'Settings' ? (
+                <div className="content-grid">
+                  <section className="card">
+                    <h2>Pharmacy details</h2>
+                    <p className="body-copy">Business dates use Asia/Kolkata.</p>
+                    <form
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        void savePharmacy();
+                      }}
+                    >
+                      <label htmlFor="settings-name">Pharmacy name</label>
+                      <input
+                        id="settings-name"
+                        maxLength={120}
+                        required
+                        disabled={busy || Boolean(pending)}
+                        value={pending?.name ?? draft?.name ?? status.pharmacy.name}
+                        onChange={(e) =>
+                          setDraft({
+                            name: e.target.value,
+                            expectedVersion: draft?.expectedVersion ?? status.pharmacy.version,
+                          })
+                        }
+                      />
+                      <button
+                        type="submit"
+                        className="primary"
+                        disabled={busy || !draft || !draft.name.trim()}
+                      >
+                        {pending ? 'Retry same save' : 'Save pharmacy details'}
+                      </button>
+                    </form>
+                    {draft && !pending && (
+                      <button
+                        className="text-button"
+                        disabled={busy}
+                        onClick={() => {
+                          setDraft(null);
+                          setError('');
+                          void refresh();
+                        }}
+                      >
+                        Use saved details
+                      </button>
+                    )}
+                    {pending && (
+                      <p className="body-copy">
+                        This submission is kept unchanged until the save is confirmed. Sign in again
+                        if needed, then retry the same save.
+                      </p>
+                    )}
+                  </section>
+                  <PasswordForm busy={busy} run={run} />
                 </div>
-              </section>
-              <footer>
-                <span>Prototype data folder</span>
-                <code>{status?.dataDirectory ?? 'Waiting for local storage'}</code>
-                <span>
-                  {status && `v${status.appVersion} · Electron ${status.electronVersion}`}
-                </span>
-              </footer>
+              ) : (
+                <section className="card empty-state">
+                  <div className="empty-icon" aria-hidden="true">
+                    ◇
+                  </div>
+                  <h2>{section} is planned</h2>
+                  <p>Local owner access is ready. This business workflow is not available yet.</p>
+                </section>
+              )}
             </>
           )}
+          <footer>
+            <span>Local data · No cloud account</span>
+            <button
+              className="text-button"
+              disabled={busy}
+              onClick={() =>
+                void run(
+                  () => window.mediPharm.exportDiagnostics(),
+                  (result) =>
+                    result.saved ? 'Diagnostics saved.' : 'Diagnostics export cancelled.',
+                )
+              }
+            >
+              Save diagnostics
+            </button>
+          </footer>
         </main>
       </div>
     </div>
   );
 }
-
 createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <App />

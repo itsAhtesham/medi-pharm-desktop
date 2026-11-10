@@ -1,27 +1,27 @@
 import path from 'node:path';
 
-export function prototypeRoot(platform: string, home: string, env: NodeJS.ProcessEnv): string {
+export function previewRoot(platform: string, home: string, env: NodeJS.ProcessEnv): string {
   const paths = platform === 'win32' ? path.win32 : path.posix;
-  // This entire artifact is a synthetic prototype, never a production data profile.
-  if (env.MEDIPHARM_PROTOTYPE_HOME) {
-    if (!paths.isAbsolute(env.MEDIPHARM_PROTOTYPE_HOME))
-      throw new Error('Prototype home must be absolute.');
-    return env.MEDIPHARM_PROTOTYPE_HOME;
+  // Preview builds stay isolated from both the old prototype and future production data.
+  if (env.MEDIPHARM_PREVIEW_HOME) {
+    if (!paths.isAbsolute(env.MEDIPHARM_PREVIEW_HOME))
+      throw new Error('Preview home must be absolute.');
+    return env.MEDIPHARM_PREVIEW_HOME;
   }
   if (platform === 'win32') {
     if (!env.LOCALAPPDATA || !path.win32.isAbsolute(env.LOCALAPPDATA)) {
       throw new Error('Windows LocalAppData is unavailable.');
     }
-    return path.win32.join(env.LOCALAPPDATA, 'MediPharm Prototype');
+    return path.win32.join(env.LOCALAPPDATA, 'MediPharm Desktop Preview');
   }
   if (platform === 'linux') {
     const base =
       env.XDG_DATA_HOME && path.posix.isAbsolute(env.XDG_DATA_HOME)
         ? env.XDG_DATA_HOME
         : path.posix.join(home, '.local', 'share');
-    return path.posix.join(base, 'medi-pharm-desktop-prototype');
+    return path.posix.join(base, 'medi-pharm-desktop-preview');
   }
-  throw new Error('This prototype supports Windows and Linux development.');
+  throw new Error('This preview supports Windows and Linux development.');
 }
 
 export function assetPath(root: string, rawUrl: string): string | null {

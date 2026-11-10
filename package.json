@@ -1,9 +1,9 @@
 {
   "name": "medi-pharm-desktop",
-  "productName": "MediPharm Prototype",
+  "productName": "MediPharm Desktop Preview",
   "version": "0.1.0",
   "private": true,
-  "description": "Offline Windows pharmacy desktop application \u2014 platform prototype",
+  "description": "Offline Windows pharmacy desktop application \u2014 development preview",
   "author": "Fructum",
   "license": "UNLICENSED",
   "main": ".vite/build/main.cjs",

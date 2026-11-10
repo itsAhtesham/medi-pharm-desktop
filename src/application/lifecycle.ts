@@ -9,8 +9,11 @@ const transitions: Record<LifecycleState, readonly LifecycleState[]> = {
   recoveryRequired: ['starting', 'stopping'],
   stopping: [],
 };
-export type Operation = 'read' | 'write' | 'snapshot' | 'restart' | 'diagnostics';
+export type Operation =
+  'read' | 'write' | 'snapshot' | 'restart' | 'diagnostics' | 'setup' | 'login';
 export function permits(state: LifecycleState, operation: Operation): boolean {
+  if (operation === 'setup') return state === 'setupRequired';
+  if (operation === 'login') return state === 'locked';
   if (operation === 'diagnostics') return state !== 'stopping';
   if (operation === 'restart') return state === 'recoveryRequired';
   return state === 'ready';

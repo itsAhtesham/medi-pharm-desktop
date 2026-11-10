@@ -1,29 +1,29 @@
 import { describe, expect, it } from 'vitest';
 import path from 'node:path';
-import { assetPath, prototypeRoot } from '../../src/platform/paths';
+import { assetPath, previewRoot } from '../../src/platform/paths';
 
 describe('isolated platform storage', () => {
   it('uses local Windows profile storage without guessing a drive or user', () => {
     expect(
-      prototypeRoot('win32', 'unused', { LOCALAPPDATA: 'D:\\Users\\Test User\\AppData\\Local' }),
-    ).toBe('D:\\Users\\Test User\\AppData\\Local\\MediPharm Prototype');
-    expect(() => prototypeRoot('win32', 'unused', {})).toThrow();
-    expect(
-      prototypeRoot('win32', 'unused', { MEDIPHARM_PROTOTYPE_HOME: 'D:\\Temp\\prototype' }),
-    ).toBe('D:\\Temp\\prototype');
+      previewRoot('win32', 'unused', { LOCALAPPDATA: 'D:\\Users\\Test User\\AppData\\Local' }),
+    ).toBe('D:\\Users\\Test User\\AppData\\Local\\MediPharm Desktop Preview');
+    expect(() => previewRoot('win32', 'unused', {})).toThrow();
+    expect(previewRoot('win32', 'unused', { MEDIPHARM_PREVIEW_HOME: 'D:\\Temp\\prototype' })).toBe(
+      'D:\\Temp\\prototype',
+    );
   });
   it('uses an isolated Linux directory and ignores relative XDG paths', () => {
-    expect(prototypeRoot('linux', '/home/example', {})).toBe(
-      '/home/example/.local/share/medi-pharm-desktop-prototype',
+    expect(previewRoot('linux', '/home/example', {})).toBe(
+      '/home/example/.local/share/medi-pharm-desktop-preview',
     );
-    expect(prototypeRoot('linux', '/home/example', { XDG_DATA_HOME: 'relative' })).toBe(
-      '/home/example/.local/share/medi-pharm-desktop-prototype',
+    expect(previewRoot('linux', '/home/example', { XDG_DATA_HOME: 'relative' })).toBe(
+      '/home/example/.local/share/medi-pharm-desktop-preview',
     );
-    expect(prototypeRoot('linux', '/home/example', { XDG_DATA_HOME: '/custom/data' })).toBe(
-      '/custom/data/medi-pharm-desktop-prototype',
+    expect(previewRoot('linux', '/home/example', { XDG_DATA_HOME: '/custom/data' })).toBe(
+      '/custom/data/medi-pharm-desktop-preview',
     );
     expect(() =>
-      prototypeRoot('linux', '/home/example', { MEDIPHARM_PROTOTYPE_HOME: 'relative' }),
+      previewRoot('linux', '/home/example', { MEDIPHARM_PREVIEW_HOME: 'relative' }),
     ).toThrow();
   });
 });

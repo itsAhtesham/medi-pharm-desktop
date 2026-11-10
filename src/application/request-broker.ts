@@ -92,13 +92,17 @@ export class RequestBroker {
     this.closed = true;
     for (const item of this.pending.values()) {
       clearTimeout(item.timer);
-      const uncertain = item.command === 'save' || item.command === 'snapshot';
+      const uncertain = ['setup', 'recover', 'changePassword', 'updatePharmacy'].includes(
+        item.command,
+      );
       item.resolve({
         ok: false,
         code: uncertain ? 'OUTCOME_UNKNOWN' : 'NOT_READY',
-        message: uncertain
-          ? 'Storage stopped before confirming the result. Restart storage, then retry the same submission; it may already have completed.'
-          : 'Local storage stopped. Restart storage to continue.',
+        message: ['setup', 'recover', 'changePassword'].includes(item.command)
+          ? 'The account change may have completed. Restart storage and try signing in with the new password. Keep the recovery code you saved.'
+          : uncertain
+            ? 'Storage stopped before confirming the result. Restart storage, then retry the same submission; it may already have completed.'
+            : 'Local storage stopped. Restart storage to continue.',
       });
     }
     this.pending.clear();

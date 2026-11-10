@@ -4,6 +4,12 @@ Use one SQLite database for the pharmacy's authoritative business records, acces
 
 The schema below is a proposed fresh desktop schema using the current demo's medicine-level workflows. It does not reproduce PostgreSQL-specific structures or silently import existing demo data. Business feature changes may alter the schema before implementation.
 
+## Current implementation
+
+The development preview uses `src/db/migrations/0001.ts` and a checksum ledger for the initial schema, with explicit setup and identity checks in `PharmacyDatabase`. It currently executes parameterized SQL directly through better-sqlite3; Drizzle mappings remain a phase 03 task. Existing-schema upgrades are rejected until verified backup and migration recovery exist. Business tables are present, but their domain services and relationship-equation checks are not yet implemented.
+
+Setup durably creates the installation claim before SQLite can create the database, then commits schema, metadata, pharmacy and owner together. A crash after that commit reopens a validated, locked account. A crash before commit leaves a recovery condition with files preserved; safe automatic setup resumption remains pending. See [storage/account verification](docs/verification/STORAGE_AND_ACCOUNT.md).
+
 ## Permanent directories
 
 Resolve platform paths through a tested platform adapter. Keep a stable internal product identity independent of the name displayed in the title bar.

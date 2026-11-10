@@ -1,8 +1,8 @@
 module.exports = {
   packagerConfig: {
-    name: 'MediPharm Prototype',
-    executableName: 'medipharm-prototype',
-    appBundleId: 'com.fructum.medipharm.prototype',
+    name: 'MediPharm Desktop Preview',
+    executableName: 'medipharm-preview',
+    appBundleId: 'com.fructum.medipharm.preview',
     asar: true,
     prune: true,
     download: { checksums: require('electron/checksums.json') },
@@ -16,7 +16,7 @@ module.exports = {
     {
       name: '@electron-forge/maker-squirrel',
       platforms: ['win32'],
-      config: { name: 'MediPharmPrototype', setupExe: 'MediPharm-Prototype-Setup.exe' },
+      config: { name: 'MediPharmPreview', setupExe: 'MediPharm-Preview-Setup.exe' },
     },
   ],
   plugins: [

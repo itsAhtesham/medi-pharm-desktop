@@ -8,13 +8,13 @@
 - Develop on Linux. A Windows 11 laptop is available for manual native testing.
 - Keep the single-computer, local-data, offline design. The initial dataset is empty.
 
-Retain the existing proposed defaults: one local owner account, a separate offline login recovery code, daily backups while the app is running, 14 daily and 8 weekly retained copies, optional external storage, and a separate owner-held backup passphrase. Live SQLite is protected by OS access controls; encrypted backups do not mean the live database is encrypted. These production behaviors are not implemented by the synthetic prototype.
+Retain the existing proposed defaults: one local owner account, a separate offline login recovery code, daily backups while the app is running, 14 daily and 8 weekly retained copies, optional external storage, and a separate owner-held backup passphrase. Live SQLite is protected by OS access controls; encrypted backups do not mean the live database is encrypted. Owner access and a separate login recovery code are now implemented in the development preview; backup/key-custody behavior remains pending.
 
 ## Initial implementation decisions
 
 The working CPU target is Windows x64, pending confirmation of the laptop's architecture. Record its Windows build, CPU, RAM, storage, and display before claiming a platform gate. A separate Windows 10 environment is still needed.
 
-The first artifact is explicitly named **MediPharm Prototype** with internal ID `com.fructum.medipharm.prototype`, executable `medipharm-prototype`, and separate prototype data directories. It contains synthetic records only. Final product/publisher identity and signing ownership remain pending; this prototype must not silently become a production data identity.
+The historical first artifact was named **MediPharm Prototype** with internal ID `com.fructum.medipharm.prototype`, executable `medipharm-prototype`, and separate prototype data directories. It contains synthetic records only. The current account/storage preview is **MediPharm Desktop Preview**, ID `com.fructum.medipharm.preview`, executable `medipharm-preview`, with a separate `MediPharm Desktop Preview` Windows profile and `medi-pharm-desktop-preview` Linux profile. It never imports the historical prototype dataset. Final product/publisher identity and signing ownership remain pending; this prototype must not silently become a production data identity.
 
 | Component | Pinned version |
 | --- | --- |
@@ -34,16 +34,16 @@ The foundation pins TypeScript 6.0.3 because typescript-eslint 8.72.2 supports v
 
 Exact dependency resolution is in `pnpm-lock.yaml`. Forge 8 emits CommonJS main/preload/service bundles with `.cjs` filenames. Electron 45's npm package provides an explicit `install-electron` command; the project runs it on installation. Native SQLite stays external to the JavaScript service bundle and its native binaries are unpacked from ASAR. The 13.x driver uses Node-API prebuilds; validate the actual installed binary on each OS rather than assuming Linux execution proves Windows support.
 
-The service owns the sample SQLite database. It uses WAL, FULL synchronization, foreign keys, and bounded busy waits. Snapshot tests use the SQLite backup API, convert the closed snapshot to DELETE journal mode, and open a separate restored copy. This proves storage primitives only; it does not implement the future encrypted backup, retention, journaled live restore, or pharmacy migration system.
+The original service owned the sample SQLite database; it now owns the preview pharmacy database with owner authentication and a migration ledger. The legacy storage tests remain isolated. It uses WAL, FULL synchronization, foreign keys, and bounded busy waits. Snapshot tests use the SQLite backup API, convert the closed snapshot to DELETE journal mode, and open a separate restored copy. This proves storage primitives only; it does not implement the future encrypted backup, retention, journaled live restore, or pharmacy migration system.
 
-The current UI uses small local CSS files and system fonts. Tailwind/shadcn, Drizzle business mappings, authentication, and production schemas remain for subsequent foundation/workflow work. No web implementation files have been copied.
+The current UI uses small local CSS files and system fonts. Owner-access screens and initial SQL schema are implemented. Drizzle business mappings and further workflow UI remain pending; no Tailwind/shadcn adoption is required for this slice. No web implementation files have been copied.
 
 ## Pending decisions and gates
 
 - Exact Windows builds, laptop architecture, hardware budgets, and Windows 10 test access.
 - Production product/publisher identity and signing arrangements.
 - Native Windows package, SQLite loading, DPAPI round trip, real dialogs, and process cleanup.
-- Full owner access/recovery and backup passphrase custody workflows in their planned phases.
+- Windows owner-access/recovery verification, KDF calibration, and backup passphrase custody workflows in their planned phases.
 
 These do not prevent continuing independent Linux development. They prevent marking the corresponding Windows acceptance checks complete.
 

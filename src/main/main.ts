@@ -1,31 +1,33 @@
-import { app, BrowserWindow, dialog, ipcMain, protocol, safeStorage, session } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, protocol, session } from 'electron';
 import { mkdirSync } from 'node:fs';
 import { readFile, writeFile } from 'node:fs/promises';
 import { z } from 'zod';
 import { homedir } from 'node:os';
 import path from 'node:path';
-import { randomBytes } from 'node:crypto';
 import {
   PROTOCOL_VERSION,
   channels,
   noInputSchema,
-  saveRecordSchema,
-  type DesktopStatus,
+  setupSchema,
+  loginSchema,
+  recoverSchema,
+  changePasswordSchema,
+  updatePharmacySchema,
   type Result,
   type Lifecycle,
 } from '../contracts/desktop';
 import { LifecycleController, permits, type Operation } from '../application/lifecycle';
 import { Diagnostics } from '../platform/diagnostics';
-import { assetPath, prototypeRoot } from '../platform/paths';
+import { assetPath, previewRoot } from '../platform/paths';
 import { ServiceClient } from './service-client';
 import squirrelStartup from 'electron-squirrel-startup';
 
 protocol.registerSchemesAsPrivileged([
   { scheme: 'medipharm', privileges: { standard: true, secure: true, supportFetchAPI: true } },
 ]);
-app.setName('MediPharm Prototype');
-app.setAppUserModelId('com.fructum.medipharm.prototype');
-const root = prototypeRoot(process.platform, homedir(), process.env);
+app.setName('MediPharm Desktop Preview');
+app.setAppUserModelId('com.fructum.medipharm.preview');
+const root = previewRoot(process.platform, homedir(), process.env);
 const runtime = path.join(root, 'runtime');
 mkdirSync(runtime, { recursive: true, mode: 0o700 });
 app.setPath('userData', runtime);
@@ -44,30 +46,26 @@ const failure = (): Result<never> => ({
   ok: false,
   code: 'NOT_READY',
   message:
-    'Local storage could not open. Preserve the prototype files and restart after checking the data directory.',
+    'Local storage could not open. Preserve the data files and restart after checking the data directory.',
 });
 const devUrl = !app.isPackaged ? MAIN_WINDOW_VITE_DEV_SERVER_URL : undefined;
 const appUrl = devUrl ?? 'medipharm://app/';
 
 async function startStorage(): Promise<void> {
-  const instance = new ServiceClient(
-    path.join(__dirname, 'service.cjs'),
-    path.join(root, 'data'),
-    (reason) => {
-      diagnostics.record(`service.${reason}`);
-      if (!quitting && lifecycle.value.state !== 'recoveryRequired') {
-        lifecycle.move(
-          'recoveryRequired',
-          'Local storage stopped. Your draft is preserved. Restart storage before saving again.',
-        );
-      }
-    },
-  );
+  const instance = new ServiceClient(path.join(__dirname, 'service.cjs'), root, (reason) => {
+    diagnostics.record(`service.${reason}`);
+    if (!quitting && lifecycle.value.state !== 'recoveryRequired') {
+      lifecycle.move(
+        'recoveryRequired',
+        'Local storage stopped. Your draft is preserved. Restart storage before saving again.',
+      );
+    }
+  });
   service = instance;
   try {
     await instance.ready;
     if (!quitting && service === instance && lifecycle.value.state === 'starting') {
-      lifecycle.move('ready', 'Local storage is ready.');
+      await syncAccountState();
       diagnostics.record('service.ready');
     }
   } catch {
@@ -77,6 +75,29 @@ async function startStorage(): Promise<void> {
         'Local storage could not open. Preserve its files and check the data directory.',
       );
   }
+}
+
+async function syncAccountState(): Promise<void> {
+  if (
+    !service ||
+    quitting ||
+    !['starting', 'setupRequired', 'locked', 'ready'].includes(lifecycle.value.state)
+  )
+    return;
+  const result = await service.request({ command: 'accountState' });
+  if (!result.ok) return;
+  if (quitting || !['starting', 'setupRequired', 'locked', 'ready'].includes(lifecycle.value.state))
+    return;
+  const next = result.data.state;
+  if (next !== lifecycle.value.state)
+    lifecycle.move(
+      next,
+      next === 'ready'
+        ? 'Your pharmacy is ready.'
+        : next === 'locked'
+          ? 'Sign in to your local pharmacy.'
+          : 'Set up your pharmacy on this computer.',
+    );
 }
 
 function registerApi(): void {
@@ -119,7 +140,16 @@ function registerApi(): void {
           message: lifecycle.value.message,
         };
       try {
-        return await action(parsed.data);
+        const result = await action(parsed.data);
+        if (
+          result &&
+          typeof result === 'object' &&
+          'code' in result &&
+          result.code === 'AUTH_REQUIRED' &&
+          lifecycle.value.state === 'ready'
+        )
+          lifecycle.move('locked', 'Sign in to continue. Your draft is kept in this window.');
+        return result;
       } catch {
         return {
           ok: false,
@@ -129,7 +159,10 @@ function registerApi(): void {
       }
     });
   };
-  handle(channels.lifecycle, noInputSchema, null, () => success(lifecycle.value));
+  handle(channels.lifecycle, noInputSchema, null, async () => {
+    await syncAccountState();
+    return success(lifecycle.value);
+  });
   handle(channels.setDraftDirty, z.boolean(), null, (dirty) => {
     draftDirty = dirty;
     return success(null);
@@ -149,82 +182,41 @@ function registerApi(): void {
     }
     return success<Lifecycle>(lifecycle.value);
   });
-  handle(channels.status, noInputSchema, 'read', async () => {
-    const result = service ? await service.request({ command: 'status' }) : failure();
-    if (!result.ok) return result;
-    return success<DesktopStatus>({
-      ...result.data,
-      appVersion: app.getVersion(),
-      electronVersion: process.versions.electron,
-      platform: process.platform,
-      architecture: process.arch,
-      dataDirectory: root,
-    });
-  });
   handle(
-    channels.saveRecord,
-    saveRecordSchema,
-    'write',
-    (input) => service?.request({ command: 'save', input }) ?? failure(),
+    channels.status,
+    noInputSchema,
+    'read',
+    () => service?.request({ command: 'status' }) ?? failure(),
   );
-  for (const [channel, command, operation] of [
-    [channels.createSnapshot, 'snapshot', 'snapshot'],
-    [channels.verifyRestore, 'verifyRestore', 'restoreCheck'],
-  ] as const) {
-    handle(channel, noInputSchema, 'snapshot', async () => {
+  handle(
+    channels.updatePharmacy,
+    updatePharmacySchema,
+    'write',
+    (input) => service?.request({ command: 'updatePharmacy', input }) ?? failure(),
+  );
+  const account = async (command: Parameters<ServiceClient['request']>[0]) => {
+    const result = service ? await service.request(command) : failure();
+    if (result.ok) await syncAccountState();
+    else if (
+      command.command === 'setup' &&
+      result.code === 'STORAGE_ERROR' &&
+      lifecycle.value.state === 'setupRequired'
+    )
       lifecycle.move(
-        'maintenance',
-        operation === 'snapshot'
-          ? 'Creating and verifying the snapshot…'
-          : 'Checking the restored copy…',
-        operation,
+        'recoveryRequired',
+        'Setup could not finish. Preserve the data files before restarting storage.',
       );
-      diagnostics.record('operation.started');
-      try {
-        const result = await service!.request({ command });
-        diagnostics.record(result.ok ? 'operation.finished' : 'operation.failed');
-        return result;
-      } finally {
-        if (lifecycle.value.state === 'maintenance')
-          lifecycle.move('ready', 'Local storage is ready.');
-      }
-    });
-  }
-  handle(channels.checkKeyStorage, noInputSchema, 'read', async () => {
-    if (
-      process.platform === 'linux' &&
-      ['basic_text', 'unknown'].includes(safeStorage.getSelectedStorageBackend())
-    ) {
-      return success({
-        protected: false,
-        message:
-          'A protected Linux key store is not available. Windows DPAPI must be checked on your laptop.',
-      });
-    }
-    if (!(await safeStorage.isAsyncEncryptionAvailable()))
-      return success({
-        protected: false,
-        message: 'Protected key storage is unavailable on this device.',
-      });
-    const sample = randomBytes(32).toString('hex');
-    const encrypted = await safeStorage.encryptStringAsync(sample);
-    const decrypted = await safeStorage.decryptStringAsync(encrypted);
-    const matches = decrypted.result === sample;
-    return success({
-      protected: matches,
-      message: matches
-        ? 'The OS protected and recovered a temporary test key successfully.'
-        : 'The protected key round trip failed.',
-    });
-  });
-  handle(channels.chooseFolder, noInputSchema, 'read', async () => {
-    if (!window) return failure();
-    const result = await dialog.showOpenDialog(window, {
-      title: 'Test the native folder picker',
-      properties: ['openDirectory'],
-    });
-    return success(result.canceled ? null : { name: path.basename(result.filePaths[0]) });
-  });
+    return result;
+  };
+  handle(channels.setup, setupSchema, 'setup', (input) => account({ command: 'setup', input }));
+  handle(channels.login, loginSchema, 'login', (input) => account({ command: 'login', input }));
+  handle(channels.recover, recoverSchema, 'login', (input) =>
+    account({ command: 'recover', input }),
+  );
+  handle(channels.changePassword, changePasswordSchema, 'write', (input) =>
+    account({ command: 'changePassword', input }),
+  );
+  handle(channels.logout, noInputSchema, 'read', () => account({ command: 'logout' }));
   handle(channels.exportDiagnostics, noInputSchema, 'diagnostics', async () => {
     if (!window) return failure();
     const result = await dialog.showSaveDialog(window, {
@@ -357,6 +349,9 @@ async function start(): Promise<void> {
   diagnostics.record('app.started');
   await startStorage();
   registerApi();
+  setInterval(() => {
+    void syncAccountState();
+  }, 30_000).unref();
   window = new BrowserWindow({
     width: 1180,
     height: 820,
@@ -364,7 +359,7 @@ async function start(): Promise<void> {
     minHeight: 650,
     show: false,
     backgroundColor: '#f5f7fa',
-    title: 'MediPharm Prototype',
+    title: 'MediPharm Desktop Preview',
     autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
@@ -412,7 +407,7 @@ else {
     .catch(() => {
       dialog.showErrorBox(
         'MediPharm could not start',
-        'The desktop prototype could not start. No pharmacy records have been created.',
+        'The desktop app could not start. Preserve the local data directory and check diagnostics.',
       );
       app.quit();
     });
