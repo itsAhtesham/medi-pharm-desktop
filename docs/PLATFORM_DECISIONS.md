@@ -24,11 +24,13 @@ The first artifact is explicitly named **MediPharm Prototype** with internal ID 
 | Electron Forge | 8.0.1 |
 | Vite | 8.3.7 |
 | React / React DOM | 19.3.1 |
-| TypeScript | 7.0.2 |
+| TypeScript | 6.0.3 |
 | better-sqlite3 | 13.0.3 |
 | Zod | 4.6.7 |
 | Vitest | 5.1.0 |
 | Playwright | 1.65.0 |
+
+The foundation pins TypeScript 6.0.3 because typescript-eslint 8.72.2 supports versions below 6.1; the initial prototype used 7.0.2. ESLint 10.14.0 and Prettier 3.9.10 enforce the checked-in source conventions. Separate renderer and desktop TypeScript configurations keep Node globals out of renderer code.
 
 Exact dependency resolution is in `pnpm-lock.yaml`. Forge 8 emits CommonJS main/preload/service bundles with `.cjs` filenames. Electron 45's npm package provides an explicit `install-electron` command; the project runs it on installation. Native SQLite stays external to the JavaScript service bundle and its native binaries are unpacked from ASAR. The 13.x driver uses Node-API prebuilds; validate the actual installed binary on each OS rather than assuming Linux execution proves Windows support.
 

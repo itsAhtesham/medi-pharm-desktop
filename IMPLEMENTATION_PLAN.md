@@ -2,7 +2,7 @@
 
 Build the desktop application in small, verifiable phases, starting with a working packaged SQLite prototype and ending with tested Windows 10 and 11 installers. Daily development takes place on Linux. The application stores data locally, starts its services when opened, and stops them when closed.
 
-Status updated 10 November 2026: phase 00 is in progress, with a synthetic prototype and early shell work. Windows gates remain open. Later business phases are not started. See [phase 00 evidence](docs/verification/PHASE_00.md). Original planning date: 8 November 2026.
+Status updated 10 November 2026: phase 00 awaits Windows testing; phase 01/02 foundation implementation is in progress. Windows gates remain open. Later business phases are not started. See [phase 00 evidence](docs/verification/PHASE_00.md) and [foundation evidence](docs/verification/FOUNDATION.md). Original planning date: 8 November 2026.
 
 ## Scope and document ownership
 
@@ -17,8 +17,8 @@ The first release serves one pharmacy, one local owner, and one computer. No LAN
 | Phase | Deliverable | Depends on | Overall milestone | Status |
 | --- | --- | --- | --- | --- |
 | 00 | Platform decisions and packaged native prototype | None | 0 Platform prototype | In progress; Windows verification pending |
-| 01 | Project foundation and local interface shell | 00 toolchain proof | 1 Desktop foundation | Early prototype shell; full phase pending |
-| 02 | Application lifecycle and restricted IPC | 01 | 1 Desktop foundation | Not started |
+| 01 | Project foundation and local interface shell | 00 toolchain proof | 1 Desktop foundation | Tooling and shell implemented; production profile and Windows gates pending |
+| 02 | Application lifecycle and restricted IPC | 01 | 1 Desktop foundation | Lifecycle/API/recovery implemented; remaining integration gates pending |
 | 03 | SQLite schema and storage infrastructure | 02 | 2 Storage and account | Not started |
 | 04 | Owner access and reliable mutation infrastructure | 03 | 2 Storage and account | Not started |
 | 05 | Encrypted local and external backup creation | 04 | 3 Backup and recovery | Not started |
@@ -34,6 +34,8 @@ The first release serves one pharmacy, one local owner, and one computer. No LAN
 This is the default sequence, not a requirement to stop at the end of every phase. Continue authorized implementation when the evidence supports the next step. If target hardware or signing access is unavailable, identify the blocked checks and continue independent Linux work; do not record the corresponding platform gate as passed.
 
 Native packaging starts in phase 00 and is checked throughout. Phase 11 completes distribution rather than discovering packaging for the first time. Database upgrades on an existing owner installation remain disabled until phase 06 supplies verified pre-migration backup and recovery.
+
+Completed task checkboxes below refer to the implemented behavior and linked Linux evidence. They do not close the Windows platform gates. The reserved setup/locked states will connect to real owner access in phase 04; the current store remains synthetic.
 
 ## Execution and completion rules
 
@@ -78,12 +80,12 @@ Launch the packaged prototype with networking disabled. Create a record, exit, r
 ### Implementation tasks
 
 - [ ] **P01-01** Create the proposed source areas: `main`, `preload`, `renderer`, `service`, `application`, `domain`, `db`, `backup`, `contracts`, and `platform`. Keep business code independent of Electron APIs.
-- [ ] **P01-02** Configure TypeScript targets, linting, formatting, path imports, lockfile use, and separate bundles for renderer, main, preload, and service. Exclude native binaries from JavaScript bundling.
-- [ ] **P01-03** Add development, lint, typecheck, unit, integration, desktop-test, recovery-test, package, and make scripts. Document which execute on Linux and which require the target OS.
-- [ ] **P01-04** Build the app shell, navigation, accessible dialogs, form controls, loading/error/empty states, and placeholder routes for the confirmed baseline. Use synthetic display data only.
+- [x] **P01-02** Configure TypeScript targets, linting, formatting, path imports, lockfile use, and separate bundles for renderer, main, preload, and service. Exclude native binaries from JavaScript bundling.
+- [x] **P01-03** Add development, lint, typecheck, unit, integration, desktop-test, recovery-test, package, and make scripts. Document which execute on Linux and which require the target OS.
+- [x] **P01-04** Build the app shell, navigation, accessible dialogs, form controls, loading/error/empty states, and placeholder routes for the confirmed baseline. Use synthetic display data only.
 - [ ] **P01-05** Bundle fonts, icons, styles, and other UI assets locally. Implement the constrained production application protocol and verify asset resolution in installed builds.
 - [ ] **P01-06** Add explicit environment configuration and isolated development/test roots. Production must not fall back to fixture data or expose a test bypass.
-- [ ] **P01-07** Establish unit tests for shared pure helpers and a desktop smoke journey that launches the shell, navigates, and quits cleanly.
+- [x] **P01-07** Establish unit tests for shared pure helpers and a desktop smoke journey that launches the shell, navigates, and quits cleanly.
 
 ### Required verification
 
@@ -101,14 +103,14 @@ Run lint, typecheck, and shell smoke tests. Navigate all placeholder routes by k
 
 ### Implementation tasks
 
-- [ ] **P02-01** Implement the single-instance lock, second-launch focus behavior, and service startup/readiness handshake. Start the service only as part of launching the app.
+- [x] **P02-01** Implement the single-instance lock, second-launch focus behavior, and service startup/readiness handshake. Start the service only as part of launching the app.
 - [ ] **P02-02** Implement application states: starting, setup required, locked, ready, maintenance, recovery required, and stopping. Define which commands each state allows.
-- [ ] **P02-03** Expose explicit preload methods with shared Zod request/result schemas and protocol versioning. Enforce trusted sender/frame checks, request bounds, and registered operations in the main-process broker.
-- [ ] **P02-04** Correlate requests and responses; implement typed errors, progress events, event unsubscription, bounded queues, and timeout behavior. A timeout must not be equated automatically with a rolled-back write.
+- [x] **P02-03** Expose explicit preload methods with shared Zod request/result schemas and protocol versioning. Enforce trusted sender/frame checks, request bounds, and registered operations in the main-process broker.
+- [x] **P02-04** Correlate requests and responses; implement typed errors, progress events, event unsubscription, bounded queues, and timeout behavior. A timeout must not be equated automatically with a rolled-back write.
 - [ ] **P02-05** Add service supervision and parent-loss shutdown. On service failure, disable writes and invalidate sessions; provide a restart/recovery path without blindly replaying pending mutations.
 - [ ] **P02-06** Implement graceful quit, in-flight job handling, and unsaved-form prompts. Closing the last window exits the service on both Windows 10 and 11. Minimizing leaves the application running.
-- [ ] **P02-07** Apply renderer sandboxing, context isolation, restricted navigation, production CSP, and denial of unneeded permissions. Do not expose arbitrary SQL, filesystem paths, shell commands, or generic IPC calls.
-- [ ] **P02-08** Add redacted, rotating local diagnostics and a local support-export mechanism. Keep identifiers needed for diagnosis without logging customer data or secrets.
+- [x] **P02-07** Apply renderer sandboxing, context isolation, restricted navigation, production CSP, and denial of unneeded permissions. Do not expose arbitrary SQL, filesystem paths, shell commands, or generic IPC calls.
+- [x] **P02-08** Add redacted, rotating local diagnostics and a local support-export mechanism. Keep identifiers needed for diagnosis without logging customer data or secrets.
 
 ### Required verification
 

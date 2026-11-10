@@ -9,15 +9,22 @@ import { PrototypeStore } from '../../src/db/prototype-store';
 describe('real file-backed prototype storage', () => {
   let root: string;
   let store: PrototypeStore | undefined;
-  beforeEach(() => { root = mkdtempSync(path.join(tmpdir(), 'medipharm-store-test-')); });
-  afterEach(() => { store?.close(); store = undefined; rmSync(root, { recursive: true, force: true }); });
+  beforeEach(() => {
+    root = mkdtempSync(path.join(tmpdir(), 'medipharm-store-test-'));
+  });
+  afterEach(() => {
+    store?.close();
+    store = undefined;
+    rmSync(root, { recursive: true, force: true });
+  });
 
   it('reopens committed records and deduplicates uncertain retries', () => {
     const request = { requestId: randomUUID(), note: 'Synthetic persisted record' };
     store = new PrototypeStore(root);
     expect(store.status().journalMode).toBe('wal');
     expect(store.save(request).recordCount).toBe(1);
-    store.close(); store = undefined;
+    store.close();
+    store = undefined;
     store = new PrototypeStore(root);
     expect(store.status().lastRecord?.note).toBe(request.note);
     expect(store.save(request).recordCount).toBe(1);
@@ -40,7 +47,11 @@ describe('real file-backed prototype storage', () => {
     expect(store.status().recordCount).toBe(2);
     expect((await store.snapshot()).recordCount).toBe(2);
     expect(store.verifyRestore().recordCount).toBe(2);
-    expect(readdirSync(root).some((name) => name.startsWith('restore-check-') || name.endsWith('.partial'))).toBe(false);
+    expect(
+      readdirSync(root).some(
+        (name) => name.startsWith('restore-check-') || name.endsWith('.partial'),
+      ),
+    ).toBe(false);
   });
 
   it('rejects a corrupted snapshot and preserves live data', async () => {
@@ -54,7 +65,8 @@ describe('real file-backed prototype storage', () => {
 
   it('does not silently recreate a missing initialized database', () => {
     store = new PrototypeStore(root);
-    store.close(); store = undefined;
+    store.close();
+    store = undefined;
     rmSync(path.join(root, 'prototype.sqlite'));
     expect(() => new PrototypeStore(root)).toThrow('missing');
     expect(existsSync(path.join(root, 'prototype.sqlite'))).toBe(false);
@@ -62,11 +74,14 @@ describe('real file-backed prototype storage', () => {
 
   it('rejects newer schema versions without changing them', () => {
     store = new PrototypeStore(root);
-    store.close(); store = undefined;
+    store.close();
+    store = undefined;
     const db = new Database(path.join(root, 'prototype.sqlite'));
-    db.pragma('user_version = 99'); db.close();
+    db.pragma('user_version = 99');
+    db.close();
     expect(() => new PrototypeStore(root)).toThrow('Unsupported');
     const check = new Database(path.join(root, 'prototype.sqlite'), { readonly: true });
-    expect(check.pragma('user_version', { simple: true })).toBe(99); check.close();
+    expect(check.pragma('user_version', { simple: true })).toBe(99);
+    check.close();
   });
 });

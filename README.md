@@ -6,17 +6,19 @@ The user confirmed the existing business scope unchanged on 10 November 2026. A 
 
 ## Current status
 
-Phase 00 is in progress, with an early interface shell from phase 01. The application is a **synthetic platform prototype**, not a pharmacy-ready release.
+Phase 00 awaits Windows verification. Implementation has started on the phase 01/02 desktop foundation, with tested lifecycle and recovery behavior. The application is a **synthetic platform prototype**, not a pharmacy-ready release.
 
 Implemented:
 
 - Electron window with a React interface and locally bundled assets.
-- Restricted preload API and a dedicated utility process owning SQLite.
+- Versioned, validated preload API and a dedicated utility process owning SQLite.
 - Sample-record persistence and duplicate-request protection.
 - Raw SQLite snapshots and verification of a restored copy in a separate location.
 - Native folder-picker and protected-key-store checks.
 - Single-instance behavior, service shutdown, and missing-database protection.
-- Unit/integration tests and packaged desktop journeys.
+- Service failure detection, explicit restart, draft preservation, and safe uncertain-save retries.
+- Unsaved-close confirmation and local diagnostic export with bounded, allowlisted logs.
+- Linting, formatting, separate renderer/desktop type checks, and unit/integration/recovery/desktop tests.
 
 Business screens are visibly marked as planned. Owner authentication, the pharmacy schema, encrypted backups, live-data restore, reminders, exports, and signed installers remain future phases. Never enter real customer data into this prototype. Its raw snapshots are unencrypted and are not the future `.mpbackup` format.
 
@@ -34,6 +36,9 @@ pnpm dev
 Installation downloads the pinned Electron runtime. Internet is needed on the development/build machine for dependency downloads; the packaged runtime uses local assets and storage.
 
 ```sh
+pnpm test:unit
+pnpm test:integration
+pnpm test:recovery
 pnpm package       # package for this operating system
 pnpm test:desktop  # test that packaged artifact; needs a desktop session
 ```
@@ -53,6 +58,7 @@ The current installer configuration is set up to produce an **unsigned prototype
 | Document | Purpose |
 | --- | --- |
 | [Platform decisions](docs/PLATFORM_DECISIONS.md) | Confirmed scope, prototype identity, pinned toolchain, pending hardware decisions |
+| [Foundation verification](docs/verification/FOUNDATION.md) | Latest implemented lifecycle/API work, checks, and remaining gates |
 | [Phase 00 verification](docs/verification/PHASE_00.md) | Actual checks and remaining platform gates |
 | [Overall plan](OVERALL_PLAN.md) | Requirements, scope, milestones, acceptance criteria |
 | [Implementation plan](IMPLEMENTATION_PLAN.md) | Fourteen phases, task dependencies, and completion gates |

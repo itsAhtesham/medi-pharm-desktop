@@ -1,6 +1,6 @@
 # Phase 00 verification — 10 November 2026
 
-**Status: in progress. Linux prototype checks pass; Windows gates remain open.**
+**Historical baseline verification.** This prototype was subsequently committed as `fe377e7`. Windows gates remain open. See [foundation verification](FOUNDATION.md) for the newer implementation and artifact.
 
 This evidence covers the synthetic prototype only. It does not certify pharmacy workflows, production migrations, encrypted backup, live-data restore, authentication, or a Windows installer. All code was written in this repository from scratch.
 
