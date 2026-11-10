@@ -115,6 +115,8 @@ test('renderer is sandboxed, remote requests are blocked and inputs are validate
   expect(isolated.node).toBe('undefined');
   expect(isolated.methods.sort()).toEqual(
     [
+      'exportCsv',
+      'customerSupplies',
       'businessQuery',
       'businessSave',
       'purchasePreview',
@@ -583,4 +585,165 @@ test('business drafts survive locking and catalogue archive/restore preserves th
   await page.getByLabel('Record status', { exact: true }).selectOption('active');
   await expect(page.locator('.record-row')).toHaveCount(1);
   await expect(page.locator('.record-row')).toContainText('Preserved draft');
+});
+
+test('current supplies and native CSV exports preserve filters, history and existing files', async () => {
+  const page = await launch();
+  await setup(page);
+  const ids = await page.evaluate(async () => {
+    const today = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Kolkata',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(new Date());
+    const c = await window.mediPharm.businessSave({
+      kind: 'customer',
+      requestId: crypto.randomUUID(),
+      id: null,
+      expectedVersion: null,
+      name: 'Report Customer',
+      phone: '+91 98765 43210',
+      age: null,
+      notes: 'Export example',
+      archived: false,
+    });
+    if (!c.ok) throw new Error(c.message);
+    const medicines: string[] = [];
+    for (const name of ['Report medicine A', 'Report medicine B']) {
+      const m = await window.mediPharm.businessSave({
+        kind: 'medicine',
+        requestId: crypto.randomUUID(),
+        id: null,
+        expectedVersion: null,
+        name,
+        strength: '10 mg',
+        form: 'tablet',
+        archived: false,
+      });
+      if (!m.ok) throw new Error(m.message);
+      medicines.push(m.data.id);
+    }
+    const p = {
+      id: null,
+      expectedVersion: null,
+      customerId: c.data.id,
+      date: today,
+      notes: 'Report purchase',
+      reason: '',
+      items: medicines.map((medicineId) => ({
+        medicineId,
+        quantity: '1.250',
+        unit: 'tablets' as const,
+      })),
+      supplies: medicines.map((medicineId, index) => ({
+        medicineId,
+        start: today,
+        days: index ? 7 : 1,
+        mode: 'replace' as const,
+        remaining: null,
+        reminder: !index,
+        manualDate: null,
+        confirmLate: false,
+      })),
+    };
+    const preview = await window.mediPharm.purchasePreview(p);
+    if (!preview.ok) throw new Error(preview.message);
+    const saved = await window.mediPharm.businessSave({
+      ...p,
+      kind: 'purchase',
+      requestId: crypto.randomUUID(),
+      expectedRevision: preview.data.revision,
+    });
+    if (!saved.ok) throw new Error(saved.message);
+    const list = await window.mediPharm.businessQuery({ kind: 'followups', customerId: c.data.id });
+    if (!list.ok) throw new Error(list.message);
+    const f = list.data.followups[0];
+    const contact = await window.mediPharm.businessSave({
+      kind: 'followup',
+      requestId: crypto.randomUUID(),
+      id: f.id,
+      expectedVersion: f.version,
+      action: 'contact',
+      note: 'Reached customer for report',
+      date: null,
+    });
+    if (!contact.ok) throw new Error(contact.message);
+    return { customerId: c.data.id, purchaseId: saved.data.id };
+  });
+  await page.getByRole('button', { name: 'Customers', exact: true }).click();
+  await page.getByRole('button', { name: 'View current supplies', exact: true }).click();
+  const supplies = page.getByRole('region', { name: 'Current medicine supplies' });
+  await expect(supplies.locator('.supply-report-row')).toHaveCount(2);
+  await expect(supplies).toContainText('1 estimated days remaining');
+  await expect(supplies).toContainText('7 estimated days remaining');
+  await expect(supplies).toContainText('Reminder disabled');
+  await expect(supplies).toContainText('Due today');
+  await page.screenshot({ path: 'test-results/current-supplies.png', fullPage: true });
+  await supplies.getByRole('button', { name: 'View source purchase #1' }).first().click();
+  await expect(page.locator('.purchase-detail')).toContainText('Report purchase');
+  const output = await mkdtemp(path.join(tmpdir(), 'medipharm-csv-desktop-'));
+  const file = path.join(output, 'customers.csv');
+  try {
+    await app!.evaluate(({ dialog }, filename) => {
+      dialog.showSaveDialog = async () => ({ canceled: false, filePath: filename });
+    }, file);
+    await page.getByRole('button', { name: 'Export CSV', exact: true }).click();
+    await expect(page.getByRole('status')).toContainText('CSV saved: 1 data rows.');
+    expect(await readFile(file, 'utf8')).toContain('Report Customer');
+    await page.getByLabel('Search customers', { exact: true }).fill('Not a match');
+    await expect(page.getByRole('heading', { name: 'No matching records' })).toBeVisible();
+    await page.getByRole('button', { name: 'Export CSV', exact: true }).click();
+    await expect(page.getByRole('status')).toContainText('CSV saved: 0 data rows.');
+    const empty = await readFile(file, 'utf8');
+    expect(empty).not.toContain('Report Customer');
+    await app!.evaluate(({ dialog }) => {
+      dialog.showSaveDialog = async () => ({ canceled: true, filePath: '' });
+    });
+    await page.getByRole('button', { name: 'Export CSV', exact: true }).click();
+    await expect(page.getByRole('status')).toContainText('CSV export cancelled.');
+    expect(await readFile(file, 'utf8')).toBe(empty);
+    await app!.evaluate(
+      ({ dialog }, filename) => {
+        dialog.showSaveDialog = async () => ({ canceled: false, filePath: filename });
+      },
+      path.join(root, 'data', 'live', 'bad.csv'),
+    );
+    await page.getByRole('button', { name: 'Export CSV', exact: true }).click();
+    await expect(page.getByRole('alert')).toContainText('outside the application data folder');
+    await page.getByRole('button', { name: 'Settings', exact: true }).click();
+    await page.getByLabel('Records to export', { exact: true }).selectOption('followupHistory');
+    const history = path.join(output, 'history.csv');
+    await app!.evaluate(({ dialog }, filename) => {
+      dialog.showSaveDialog = async () => ({ canceled: false, filePath: filename });
+    }, history);
+    await page.getByRole('button', { name: 'Export CSV', exact: true }).click();
+    await expect(page.getByRole('status')).toContainText('CSV saved: 2 data rows.');
+    expect(await readFile(history, 'utf8')).toContain('Reached customer for report');
+    const denied = await page.evaluate(async () => ({
+      invalid: await window.mediPharm.exportCsv({ kind: 'constructor' } as never),
+      path: await window.mediPharm.exportCsv({
+        kind: 'customers',
+        filename: '/tmp/unrequested.csv',
+      } as never),
+    }));
+    expect(denied.invalid).toMatchObject({ code: 'INVALID_REQUEST' });
+    expect(denied.path).toMatchObject({ code: 'INVALID_REQUEST' });
+    await page.getByRole('button', { name: 'Lock workspace' }).click();
+    expect(
+      await page.evaluate(
+        async (id) => ({
+          supply: await window.mediPharm.customerSupplies({ customerId: id }),
+          csv: await window.mediPharm.exportCsv({ kind: 'customers' }),
+        }),
+        ids.customerId,
+      ),
+    ).toMatchObject({ supply: { ok: false }, csv: { ok: false } });
+    await login(page);
+    await page.getByRole('button', { name: 'Customers', exact: true }).click();
+    await page.getByRole('button', { name: 'View current supplies', exact: true }).click();
+    await expect(page.locator('.supply-report-row')).toHaveCount(2);
+  } finally {
+    await rm(output, { recursive: true, force: true });
+  }
 });

@@ -1,4 +1,10 @@
 import {
+  csvResultSchema,
+  supplyResultSchema,
+  type CsvInput,
+  type SupplyQuery,
+} from '../contracts/reports';
+import {
   queryResultSchema,
   mutationResultSchema,
   previewSchema,
@@ -52,18 +58,23 @@ async function invoke<T extends z.ZodType>(
     ok: false,
     code: 'OUTCOME_UNKNOWN',
     message:
-      channel === channels.backupConfigure || channel === channels.backupRotate
-        ? 'Backup credentials may have changed. Unlock using the new backup passphrase and create a new archive.'
-        : channel === channels.restoreConfirm
-          ? 'Restore may have completed. Restart storage, sign in and check the restored pharmacy.'
-          : channel === channels.setup ||
-              channel === channels.recover ||
-              channel === channels.changePassword
-            ? 'The account change may have completed. Restart storage and try signing in with the new password. Keep the recovery code you saved.'
-            : 'The desktop connection was interrupted. A save may have completed. Keep this submission and retry after storage recovers.',
+      channel === channels.exportCsv
+        ? 'Export confirmation was interrupted. Check the selected CSV file before exporting again.'
+        : channel === channels.backupConfigure || channel === channels.backupRotate
+          ? 'Backup credentials may have changed. Unlock using the new backup passphrase and create a new archive.'
+          : channel === channels.restoreConfirm
+            ? 'Restore may have completed. Restart storage, sign in and check the restored pharmacy.'
+            : channel === channels.setup ||
+                channel === channels.recover ||
+                channel === channels.changePassword
+              ? 'The account change may have completed. Restart storage and try signing in with the new password. Keep the recovery code you saved.'
+              : 'The desktop connection was interrupted. A save may have completed. Keep this submission and retry after storage recovers.',
   };
 }
 const api: DesktopApi = Object.freeze({
+  exportCsv: (input: CsvInput) => invoke(channels.exportCsv, csvResultSchema, input),
+  customerSupplies: (input: SupplyQuery) =>
+    invoke(channels.customerSupplies, supplyResultSchema, input),
   businessQuery: (input: BusinessQuery) => invoke(channels.businessQuery, queryResultSchema, input),
   businessSave: (input: BusinessMutation) =>
     invoke(channels.businessSave, mutationResultSchema, input),

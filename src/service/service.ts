@@ -1,3 +1,5 @@
+import { CsvExporter } from '../application/csv-export';
+import { SupplyReport } from '../application/supply-report';
 import { BusinessService } from '../application/business-service';
 import { BackupManager } from '../backup/manager';
 import { PharmacyDatabase } from '../db/pharmacy-database';
@@ -54,6 +56,12 @@ port.on('message', (event) => {
         );
       let data: unknown;
       switch (request.command) {
+        case 'exportCsv':
+          data = new CsvExporter(store).export(request.input.selection, request.input.filename);
+          break;
+        case 'customerSupplies':
+          data = new SupplyReport(store).query(request.input);
+          break;
         case 'businessQuery':
           data = business.query(request.input);
           break;

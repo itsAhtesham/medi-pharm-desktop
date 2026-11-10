@@ -6,7 +6,7 @@ The user confirmed the existing business scope unchanged on 10 November 2026. A 
 
 ## Current status
 
-The app now has an **offline pharmacy workflow development preview**. Windows release verification, CSV exports and release-scale testing remain pending; it is not ready for pharmacy operations.
+The app now has an **offline pharmacy workflow development preview**. Windows release verification and release-scale testing remain pending; it is not ready for pharmacy operations.
 
 Implemented:
 
@@ -25,9 +25,11 @@ Implemented:
 - Purchases with exact quantities, multiple units, dated medicine snapshots, independent supply durations, refill carry-over, previews, corrections and cancellation.
 - Customer-grouped due/scheduled follow-ups, contact outcomes, next-contact dates, manual closure/reopening, and restoration of earlier cycle state after cancellation.
 - Customer/medicine purchase history, purchase details, readable audit history, and populated-data backup/restore validation.
+- Consolidated customer supply coverage, future supply starts, run-out estimates and current reminder state.
+- Filtered/all-record CSV exports for customers, medicines, purchases/items, follow-up cycles and contact history through native save dialogs.
 - Unit, integration, recovery, and packaged desktop tests using temporary synthetic profiles.
 
-CSV export, version-to-version migration scripts, load verification and signed installers remain future work. Use test data only. The old prototype snapshot/key-store checks remain historical evidence and isolated storage tests; raw snapshots are no longer exposed by the app.
+Version-to-version migration scripts, load verification and signed installers remain future work. Use test data only. The old prototype snapshot/key-store checks remain historical evidence and isolated storage tests; raw snapshots are no longer exposed by the app.
 
 ## Develop on Linux
 
@@ -62,7 +64,7 @@ A missing/corrupt database or mismatched migration ledger opens recovery mode. N
 
 This preview caps archives at **64 MiB** and retains old live generations/safety archives for inspection. Windows filesystem/DPAPI verification, large-data streaming, and future-schema upgrade rehearsals remain release gates. Existing unsupported schemas are never upgraded automatically. Use synthetic data until the release checks and owner walkthrough are complete.
 
-See [the business workflow walkthrough](docs/BUSINESS_WORKFLOWS.md) for customer, medicine, purchase and follow-up entry.
+See [reports and CSV exports](docs/REPORTS_AND_EXPORTS.md) and [the business workflow walkthrough](docs/BUSINESS_WORKFLOWS.md) for customer, medicine, purchase and follow-up entry.
 
 ## Test on Windows
 
@@ -74,6 +76,7 @@ The current installer configuration is set up to produce an **unsigned preview**
 
 | Document | Purpose |
 | --- | --- |
+| [Reports/export verification](docs/verification/REPORTS_AND_EXPORTS.md) | Current supply coverage, CSV publication and packaged export evidence |
 | [Business workflow verification](docs/verification/BUSINESS_WORKFLOWS.md) | Transaction, reconciliation, populated recovery and packaged workflow evidence |
 | [Platform decisions](docs/PLATFORM_DECISIONS.md) | Confirmed scope, prototype identity, pinned toolchain, pending hardware decisions |
 | [Backup and recovery verification](docs/verification/BACKUP_AND_RECOVERY.md) | Current archive, restore, interruption and packaged-test evidence |

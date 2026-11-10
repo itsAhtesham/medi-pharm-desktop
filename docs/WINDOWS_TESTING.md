@@ -73,3 +73,13 @@ Follow [the workflow walkthrough](BUSINESS_WORKFLOWS.md) using synthetic records
 5. Lock/unlock with a draft, verify unsaved-close confirmation, restart the app and find the saved customer/purchase histories.
 6. Back up the populated database, restore it into a fresh Windows profile, and verify purchase counts, dated labels, follow-up state and history.
 7. Use keyboard-only controls and Windows date inputs; inspect scrolling/focus at the laptop's normal display scaling. Record any Windows-specific differences rather than treating Linux UI tests as certification.
+
+## Supply report and CSV checks
+
+- Open Customers → View current supplies. Verify multiple units for one medicine produce one report row. Rehearse a future-starting refill: current coverage must still reflect the last supply that has started; the future start and latest recorded run-out appear separately. Cancel the latest purchase and confirm the earlier coverage/reminder returns.
+- Export customers, medicines, purchase items, follow-up cycles and contact history from Settings. From lists, apply a search/status filter and confirm every matching page is exported. Check optional blanks, shared phones, exact fractional quantities, archived records and cancelled purchases.
+- Open the CSV in the spreadsheet application used on the laptop. Verify UTF-8 names, commas, quotes and embedded line breaks. Use synthetic formula-prefixed names/notes such as `=1+1` and confirm they remain text. Formula-prefixed cells intentionally receive a leading apostrophe. Import phone columns as text to preserve leading zeros and formatting.
+- Rehearse native save cancellation, explicit overwrite of a disposable CSV, a CSV open/locked in Excel, a read-only destination, a disconnected removable drive and a full test volume. A failure before publication must preserve an existing destination. Interrupted external writes can leave a `.medipharm-export-*.partial` file; it is not a completed report.
+- Confirm CSV exports cannot target the application’s own data directory. CSVs are unencrypted portability reports and do not replace encrypted backups. Verify the destination and its access permissions before using real data.
+
+Linux verification does not certify Windows rename/locking, save-dialog overwrite confirmation, removable-drive flush behavior or spreadsheet import behavior. Record those results on the actual Windows 11 laptop and Windows 10 test system.

@@ -1,3 +1,4 @@
+import { csvInputSchema, supplyQuerySchema } from '../contracts/reports';
 import { querySchema, businessMutationSchema, purchaseDraftSchema } from '../contracts/business';
 import {
   app,
@@ -170,15 +171,17 @@ async function unlockDeviceBackup(): Promise<void> {
 }
 async function storageJob<C extends ServiceCommand>(
   command: C,
-  operation: 'backup' | 'restore',
+  operation: 'backup' | 'restore' | 'export',
 ): Promise<Result<ServiceData<C['command']>>> {
   if (!service || !['ready', 'setupRequired', 'recoveryRequired'].includes(lifecycle.value.state))
     return failure();
   lifecycle.move(
     'maintenance',
-    operation === 'restore'
-      ? 'Restoring the verified pharmacy backup…'
-      : 'Verifying encrypted backups…',
+    operation === 'export'
+      ? 'Exporting CSV…'
+      : operation === 'restore'
+        ? 'Restoring the verified pharmacy backup…'
+        : 'Verifying encrypted backups…',
     operation,
   );
   diagnostics.record('operation.started');
@@ -304,6 +307,30 @@ function registerApi(): void {
     'read',
     (input) => service?.request({ command: 'purchasePreview', input }) ?? failure(),
   );
+  handle(
+    channels.customerSupplies,
+    supplyQuerySchema,
+    'read',
+    (input) => service?.request({ command: 'customerSupplies', input }) ?? failure(),
+  );
+  handle(channels.exportCsv, csvInputSchema, 'read', async (input) => {
+    if (!window || !service) return failure();
+    const auth = await service.request({ command: 'status' });
+    if (!auth.ok) return auth;
+    const selection = await dialog.showSaveDialog(window, {
+      title: 'Export CSV',
+      defaultPath: `medipharm-${input.kind}.csv`,
+      filters: [{ name: 'CSV spreadsheet', extensions: ['csv'] }],
+      properties: ['showOverwriteConfirmation'],
+    });
+    if (selection.canceled || !selection.filePath)
+      return success({ saved: false, rows: 0, bytes: 0 });
+    if (lifecycle.value.state !== 'ready') return failure();
+    return storageJob(
+      { command: 'exportCsv', input: { selection: input, filename: selection.filePath } },
+      'export',
+    );
+  });
   handle(channels.lifecycle, noInputSchema, null, async () => {
     await syncAccountState();
     return success(lifecycle.value);

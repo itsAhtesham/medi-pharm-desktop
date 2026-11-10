@@ -769,3 +769,45 @@ summary:focus-visible {
 .audit-history h4 {
   margin-bottom: 12px;
 }
+.report-exports,
+.customer-supplies,
+.export-settings {
+  margin-block: 22px;
+}
+.csv-control {
+  max-width: 100%;
+}
+.csv-feedback {
+  margin: 8px 0 0;
+}
+.report-exports > .field-help {
+  margin-bottom: 12px;
+}
+.supply-report-row {
+  border-top: 1px solid var(--line);
+  padding-top: 14px;
+}
+.supply-report-row h3 {
+  font-size: 16px;
+  margin-block: 4px 16px;
+}
+.supply-report-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 20px;
+}
+.supply-report-grid h4 {
+  color: var(--muted);
+  font-size: 12px;
+  margin: 0 0 12px;
+}
+.supply-report-grid p {
+  font-size: 13px;
+  line-height: 1.7;
+}
+@media (max-width: 1000px) {
+  .supply-report-grid {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+}

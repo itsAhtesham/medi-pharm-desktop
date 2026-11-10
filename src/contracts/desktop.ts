@@ -1,4 +1,14 @@
 import {
+  csvServiceInputSchema,
+  csvResultSchema,
+  supplyQuerySchema,
+  supplyResultSchema,
+  type CsvInput,
+  type CsvResult,
+  type SupplyQuery,
+  type SupplyResult,
+} from './reports';
+import {
   querySchema,
   queryResultSchema,
   businessMutationSchema,
@@ -104,7 +114,7 @@ export const lifecycleSchema = z
     revision: z.number().int().nonnegative(),
     state: lifecycleStateSchema,
     message: z.string().max(400),
-    operation: z.enum(['snapshot', 'restoreCheck', 'backup', 'restore']).nullable(),
+    operation: z.enum(['snapshot', 'restoreCheck', 'backup', 'restore', 'export']).nullable(),
   })
   .strict();
 export type Lifecycle = z.infer<typeof lifecycleSchema>;
@@ -183,6 +193,10 @@ export type WorkspaceStatus = z.infer<typeof workspaceStatusSchema>;
 export type AccountState = z.infer<typeof accountStateSchema>;
 const envelope = { version, id: z.uuid() };
 export const serviceRequestSchema = z.discriminatedUnion('command', [
+  z.object({ ...envelope, command: z.literal('exportCsv'), input: csvServiceInputSchema }).strict(),
+  z
+    .object({ ...envelope, command: z.literal('customerSupplies'), input: supplyQuerySchema })
+    .strict(),
   z.object({ ...envelope, command: z.literal('businessQuery'), input: querySchema }).strict(),
   z
     .object({ ...envelope, command: z.literal('businessSave'), input: businessMutationSchema })
@@ -246,6 +260,8 @@ export type ServiceCommand = ServiceRequest extends infer R
     : never
   : never;
 export const serviceResultSchemas = {
+  exportCsv: csvResultSchema,
+  customerSupplies: supplyResultSchema,
   businessQuery: queryResultSchema,
   businessSave: mutationResultSchema,
   purchasePreview: previewSchema,
@@ -280,6 +296,8 @@ export const serviceMessageSchema = z.discriminatedUnion('type', [
 ]);
 
 export interface DesktopApi {
+  exportCsv(input: CsvInput): Promise<Result<CsvResult>>;
+  customerSupplies(input: SupplyQuery): Promise<Result<SupplyResult>>;
   businessQuery(input: BusinessQuery): Promise<Result<BusinessData>>;
   businessSave(input: BusinessMutation): Promise<Result<z.infer<typeof mutationResultSchema>>>;
   purchasePreview(input: PurchaseDraft): Promise<Result<Preview>>;
@@ -307,6 +325,8 @@ export interface DesktopApi {
   onLifecycle(listener: (state: Lifecycle) => void): () => void;
 }
 export const channels = {
+  exportCsv: 'desktop:export-csv',
+  customerSupplies: 'desktop:customer-supplies',
   businessQuery: 'desktop:business-query',
   businessSave: 'desktop:business-save',
   purchasePreview: 'desktop:purchase-preview',

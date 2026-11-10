@@ -2,7 +2,7 @@
 
 Build the desktop application in small, verifiable phases, starting with a working packaged SQLite prototype and ending with tested Windows 10 and 11 installers. Daily development takes place on Linux. The application stores data locally, starts its services when opened, and stops them when closed.
 
-Status updated 11 November 2026: foundation, owner access, storage reliability and the first encrypted backup/restore implementation are present. Phases 03–06 remain in progress against their full release gates. Customer/medicine, purchase/supply and follow-up workflows are implemented in the development preview. Windows verification, future-schema upgrades, CSV exports and release-scale workflow testing remain open. See [workflow evidence](docs/verification/BUSINESS_WORKFLOWS.md). See [backup/recovery evidence](docs/verification/BACKUP_AND_RECOVERY.md), [storage/account evidence](docs/verification/STORAGE_AND_ACCOUNT.md), and the historical foundation reports. Original planning date: 8 November 2026.
+Status updated 11 November 2026: foundation, owner access, storage reliability and the first encrypted backup/restore implementation are present. Phases 03–06 remain in progress against their full release gates. Customer/medicine, purchase/supply and follow-up workflows are implemented in the development preview. Consolidated customer supply reports and CSV exports are also implemented. Windows verification, future-schema upgrades and release-scale workflow testing remain open. See [workflow evidence](docs/verification/BUSINESS_WORKFLOWS.md). See [backup/recovery evidence](docs/verification/BACKUP_AND_RECOVERY.md), [storage/account evidence](docs/verification/STORAGE_AND_ACCOUNT.md), and the historical foundation reports. Original planning date: 8 November 2026.
 
 ## Scope and document ownership
 
@@ -26,7 +26,7 @@ The first release serves one pharmacy, one local owner, and one computer. No LAN
 | 07 | Customer and medicine catalog workflows | 04, 06 | 4 Baseline workflows | Implemented and covered by Linux service/desktop journeys |
 | 08 | Medicine supply domain and purchase services | 07 | 4 Baseline workflows | Implemented; wider race/load matrix pending |
 | 09 | Purchase entry and correction interface | 08 | 4 Baseline workflows | Implemented; Windows/manual accessibility walkthrough pending |
-| 10 | Follow-ups, histories, settings, and export | 09 | 4 Baseline workflows | Follow-ups and purchase/audit histories implemented; CSV and consolidated supply-history view pending |
+| 10 | Follow-ups, histories, settings, and export | 09 | 4 Baseline workflows | Follow-ups, histories, consolidated supplies and CSV exports implemented; broad release acceptance remains open |
 | 11 | Signed installers and offline upgrade flow | 06, 10, signing access | 5 Packaging and updates | Not started |
 | 12 | Reliability, performance, and release verification | 11 | 6 Reliability and owner walkthrough | Not started |
 | 13 | Owner pilot, recovery rehearsal, and handover | 12 | 6 Reliability and owner walkthrough | Not started |
@@ -327,9 +327,9 @@ Run a complete purchase with two medicines and mixed units, inline creation, and
 - [x] **P10-01** Implement dashboard queries for due customers and counts. Implement dedicated follow-up tabs grouped/paginated by customer so one customer's matching medicines are not split across pages.
 - [x] **P10-02** Implement contact, optional next contact date, snooze, close with reason, and explicit reopen for an eligible current cycle. Preserve separate status and contact history per medicine.
 - [x] **P10-03** Implement contacted/awaiting-refill and follow-up-again presentation. Add refill entry links that preselect the relevant customer/medicine without guessing new supply duration or reminder opt-in.
-- [ ] **P10-04** Build current customer supply, dated purchase history, medicine purchase history, and event/audit detail views. Distinguish active, cancelled, superseded, and manually closed records.
+- [x] **P10-04** Build current customer supply, dated purchase history, medicine purchase history, and event/audit detail views. Distinguish active, cancelled, superseded, and manually closed records.
 - [x] **P10-05** Implement pharmacy settings, password change, logout, backup settings access, and the visible data/backup status. Keep device preferences separate from backed-up pharmacy settings.
-- [ ] **P10-06** Implement approved CSV exports through a native save dialog and an exact enum of export kinds. Bound memory, neutralize spreadsheet formulas, close all handles in success/failure paths, and surface cancellation/disk errors accurately.
+- [x] **P10-06** Implement approved CSV exports through a native save dialog and an exact enum of export kinds. Bound memory, neutralize spreadsheet formulas, close all handles in success/failure paths, and surface cancellation/disk errors accurately.
 - [x] **P10-07** Refresh queries after commits, route changes, app focus/resume, and relevant date changes. A lost process event must not permanently leave a view stale. Do not add SSE or a network listener for local refresh.
 - [ ] **P10-08** Add end-to-end journeys spanning purchase, contact, scheduling, refill, cancellation, reopen, history, export, logout, and a subsequent app restart.
 
@@ -347,7 +347,7 @@ The service uses the whole database revision as a conservative purchase-context 
 
 Catalogue and purchase editors preserve in-memory drafts across locking and storage reauthentication. Navigation is disabled while a business editor is open; save or explicitly discard before changing sections. Uncertain writes retain the exact command/request ID for retry. Closing the application does not persist an unsaved draft.
 
-Customer/medicine histories currently list purchases with per-purchase supplies and audit details. A consolidated current-supply view, CSV export, the broader real-file race/fault matrix and Windows keyboard/accessibility walkthrough remain open. Completed task checkboxes refer to the exercised preview slice, not production acceptance.
+Customer/medicine histories list purchases with per-purchase supplies and audit details. The consolidated customer supply view separates coverage available today from future-starting supplies and shows the latest cycle’s reminder status. Streaming CSV exports cover filtered/all customers, medicines, purchase items, follow-up cycles and events. The broader real-file race/fault matrix and Windows keyboard/accessibility walkthrough remain open. See [reports/export usage](docs/REPORTS_AND_EXPORTS.md). Completed task checkboxes refer to the exercised preview slice, not production acceptance.
 
 ## Phase 11 Signed installers and offline upgrade flow
 

@@ -1,3 +1,4 @@
+import { CsvButton, CustomerSupplies } from './reports';
 import React, { useEffect, useRef, useState, useId } from 'react';
 import {
   units,
@@ -182,6 +183,7 @@ export function BusinessWorkspace({
     medicineId?: string;
     label: string;
   } | null>(null);
+  const [supplyCustomer, setSupplyCustomer] = useState<string | null>(null);
   const [auditId, setAuditId] = useState<string | undefined>();
   const epochRef = useRef(epoch);
   epochRef.current = epoch;
@@ -204,6 +206,7 @@ export function BusinessWorkspace({
     setSearch('');
     setDetail(null);
     setHistoryFilter(null);
+    setSupplyCustomer(null);
     setAuditId(undefined);
     setData(null);
   }, [section]);
@@ -977,6 +980,57 @@ export function BusinessWorkspace({
               Refresh records
             </button>
           </div>
+          {(kind === 'customers' ||
+            kind === 'medicines' ||
+            kind === 'purchases' ||
+            kind === 'followups') && (
+            <div className="report-exports">
+              <p className="field-help">
+                Export includes all matching records across pages. CSV files are not encrypted.
+              </p>
+              <div className="business-actions">
+                <CsvButton
+                  disabled={!enabled}
+                  selection={
+                    kind === 'customers' || kind === 'medicines'
+                      ? { kind, search, status: archived ? 'archived' : 'active' }
+                      : kind === 'purchases'
+                        ? {
+                            kind,
+                            search,
+                            customerId: historyFilter?.customerId,
+                            medicineId: historyFilter?.medicineId,
+                          }
+                        : { kind, search, tab }
+                  }
+                />
+                {kind === 'followups' && (
+                  <CsvButton
+                    disabled={!enabled}
+                    selection={{ kind: 'followupHistory', search, tab }}
+                    label="Export matching follow-up history"
+                  />
+                )}
+              </div>
+            </div>
+          )}
+          {supplyCustomer && (
+            <CustomerSupplies
+              key={supplyCustomer}
+              customerId={supplyCustomer}
+              enabled={enabled && active}
+              revision={data?.revision ?? 0}
+              onClose={() => setSupplyCustomer(null)}
+              onPurchase={(id) => {
+                const generation = epoch;
+                void window.mediPharm.businessQuery({ kind: 'purchases', id }).then((r) => {
+                  if (epochRef.current !== generation) return;
+                  if (r.ok) setDetail(r.data.purchases[0] ?? null);
+                  else setError(r.message);
+                });
+              }}
+            />
+          )}
           {historyFilter && (
             <p>
               History for {historyFilter.label}{' '}
@@ -1060,6 +1114,18 @@ export function BusinessWorkspace({
                         >
                           View purchases
                         </button>
+                        {'phone' in row && (
+                          <button
+                            className="secondary"
+                            disabled={!enabled}
+                            onClick={() => {
+                              setSupplyCustomer(row.id);
+                              setDetail(null);
+                            }}
+                          >
+                            View current supplies
+                          </button>
+                        )}
                       </div>
                       {historyFilter &&
                         (historyFilter.customerId === row.id ||

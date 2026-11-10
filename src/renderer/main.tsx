@@ -4,6 +4,7 @@ import type { WorkspaceStatus, Lifecycle, Result, UpdatePharmacy } from '../cont
 import './styles.css';
 import { BackupPanel } from './backup-panel';
 import { BusinessWorkspace } from './business-workspace';
+import { ExportSettings } from './reports';
 
 const sections = [
   'Overview',
@@ -610,6 +611,7 @@ function App() {
                     </section>
                     <PasswordForm busy={busy} run={run} />
                   </div>
+                  <ExportSettings disabled={busy} />
                   <BackupPanel disabled={busy} onRestored={restored} />
                 </>
               ) : null}
