@@ -1,0 +1,5 @@
+onlyBuiltDependencies:
+  - electron
+  - better-sqlite3
+  - esbuild
+  - electron-winstaller

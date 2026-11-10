@@ -1,0 +1,13 @@
+node_modules/
+.vite/
+out/
+test-results/
+playwright-report/
+coverage/
+*.tsbuildinfo
+.env*
+!.env.example
+*.sqlite*
+*.mpbackup
+*.log
+.pnpm-store/

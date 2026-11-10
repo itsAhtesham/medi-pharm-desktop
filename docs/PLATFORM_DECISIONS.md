@@ -1,0 +1,50 @@
+# Platform decisions — 10 November 2026
+
+## Confirmed with the user
+
+- Implement this desktop application entirely from scratch. Refer to the sibling web project only for business requirements.
+- Preserve the documented business baseline without changes.
+- Release for Windows 10 and Windows 11 only. macOS is out of scope.
+- Develop on Linux. A Windows 11 laptop is available for manual native testing.
+- Keep the single-computer, local-data, offline design. The initial dataset is empty.
+
+Retain the existing proposed defaults: one local owner account, a separate offline login recovery code, daily backups while the app is running, 14 daily and 8 weekly retained copies, optional external storage, and a separate owner-held backup passphrase. Live SQLite is protected by OS access controls; encrypted backups do not mean the live database is encrypted. These production behaviors are not implemented by the synthetic prototype.
+
+## Initial implementation decisions
+
+The working CPU target is Windows x64, pending confirmation of the laptop's architecture. Record its Windows build, CPU, RAM, storage, and display before claiming a platform gate. A separate Windows 10 environment is still needed.
+
+The first artifact is explicitly named **MediPharm Prototype** with internal ID `com.fructum.medipharm.prototype`, executable `medipharm-prototype`, and separate prototype data directories. It contains synthetic records only. Final product/publisher identity and signing ownership remain pending; this prototype must not silently become a production data identity.
+
+| Component | Pinned version |
+| --- | --- |
+| Development Node.js | 24.15.0 |
+| pnpm | 10.33.4 |
+| Electron | 45.2.3 |
+| Electron Forge | 8.0.1 |
+| Vite | 8.3.7 |
+| React / React DOM | 19.3.1 |
+| TypeScript | 7.0.2 |
+| better-sqlite3 | 13.0.3 |
+| Zod | 4.6.7 |
+| Vitest | 5.1.0 |
+| Playwright | 1.65.0 |
+
+Exact dependency resolution is in `pnpm-lock.yaml`. Forge 8 emits CommonJS main/preload/service bundles with `.cjs` filenames. Electron 45's npm package provides an explicit `install-electron` command; the project runs it on installation. Native SQLite stays external to the JavaScript service bundle and its native binaries are unpacked from ASAR. The 13.x driver uses Node-API prebuilds; validate the actual installed binary on each OS rather than assuming Linux execution proves Windows support.
+
+The service owns the sample SQLite database. It uses WAL, FULL synchronization, foreign keys, and bounded busy waits. Snapshot tests use the SQLite backup API, convert the closed snapshot to DELETE journal mode, and open a separate restored copy. This proves storage primitives only; it does not implement the future encrypted backup, retention, journaled live restore, or pharmacy migration system.
+
+The current UI uses small local CSS files and system fonts. Tailwind/shadcn, Drizzle business mappings, authentication, and production schemas remain for subsequent foundation/workflow work. No web implementation files have been copied.
+
+## Pending decisions and gates
+
+- Exact Windows builds, laptop architecture, hardware budgets, and Windows 10 test access.
+- Production product/publisher identity and signing arrangements.
+- Native Windows package, SQLite loading, DPAPI round trip, real dialogs, and process cleanup.
+- Full owner access/recovery and backup passphrase custody workflows in their planned phases.
+
+These do not prevent continuing independent Linux development. They prevent marking the corresponding Windows acceptance checks complete.
+
+## Toolchain references
+
+The implementation follows the [Forge Vite configuration](https://www.electronforge.io/config/plugins/vite), [native unpacking guidance](https://www.electronforge.io/config/plugins/auto-unpack-natives), [Electron utility process API](https://www.electronjs.org/docs/latest/api/utility-process), and [asynchronous protected storage API](https://www.electronjs.org/docs/latest/api/safe-storage). Installed package types and source were checked for the pinned versions rather than relying solely on current documentation examples.
