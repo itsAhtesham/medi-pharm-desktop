@@ -115,6 +115,9 @@ test('renderer is sandboxed, remote requests are blocked and inputs are validate
   expect(isolated.node).toBe('undefined');
   expect(isolated.methods.sort()).toEqual(
     [
+      'businessQuery',
+      'businessSave',
+      'purchasePreview',
       'openBackupFolder',
       'backupStatus',
       'backupConfigure',
@@ -155,7 +158,7 @@ test('renderer is sandboxed, remote requests are blocked and inputs are validate
     }),
   ).toBe(false);
   await page.getByRole('button', { name: 'Customers', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Customers is planned' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Customers', exact: true })).toBeVisible();
 });
 
 test('service death requires reauthentication and preserves the unsaved pharmacy draft', async () => {
@@ -264,7 +267,7 @@ test('lifecycle listeners unsubscribe and navigation works by keyboard', async (
   for (const section of ['Customers', 'Medicines', 'Purchases', 'Follow-ups', 'History']) {
     await page.keyboard.press('Tab');
     await page.keyboard.press('Enter');
-    await expect(page.getByRole('heading', { name: `${section} is planned` })).toBeVisible();
+    await expect(page.getByRole('heading', { name: section, exact: true })).toBeVisible();
   }
   await page.keyboard.press('Tab');
   await page.keyboard.press('Enter');
@@ -478,4 +481,106 @@ test('external folder reselection verifies a fresh copy instead of relying on an
   } finally {
     await rm(external, { recursive: true, force: true });
   }
+});
+
+test('customer, medicine, purchase, contact, refill and cancellation work through desktop screens', async () => {
+  const page = await launch();
+  await setup(page);
+  await page.getByRole('button', { name: 'Purchases', exact: true }).click();
+  await page.getByRole('button', { name: 'New purchase', exact: true }).click();
+  await page.getByLabel('Purchase notes').fill('First desktop supply');
+  await page.getByRole('button', { name: 'Add customer here' }).click();
+  await page.getByLabel('Customer name', { exact: true }).fill('Asha Rao');
+  await page.getByLabel('Phone', { exact: true }).fill('+91 98765 43210');
+  await page.getByRole('button', { name: 'Save customer', exact: true }).click();
+  await expect(page.getByLabel('Purchase notes')).toHaveValue('First desktop supply');
+  await page.getByRole('button', { name: 'Add medicine here' }).click();
+  await page.getByLabel('Medicine name', { exact: true }).fill('Test medicine');
+  await page.getByLabel('Strength', { exact: true }).fill('10 mg');
+  await page.getByRole('button', { name: 'Save medicine', exact: true }).click();
+  await page.getByLabel('Quantity 1', { exact: true }).fill('1.250');
+  await page.getByLabel('New days 1', { exact: true }).fill('1');
+  await page.getByLabel('Enable reminder for Test medicine · 10 mg · tablet').check();
+  await page.getByRole('button', { name: 'Refresh supply preview' }).click();
+  await expect(page.locator('.supply-estimate')).toContainText('Carry 0 days');
+  await page.screenshot({ path: 'test-results/purchase-supply-preview.png', fullPage: true });
+  await page.getByRole('button', { name: 'Save purchase', exact: true }).click();
+  await page.getByRole('button', { name: 'View purchase #1', exact: true }).click();
+  await expect(page.locator('.purchase-detail')).toContainText('1.25 tablets');
+  await page.getByRole('button', { name: 'Correct purchase', exact: true }).click();
+  await page.getByLabel('Purchase notes').fill('Corrected supply note');
+  await page.getByLabel('Correction reason').fill('Clarify the note');
+  await page.getByRole('button', { name: 'Refresh supply preview' }).click();
+  await page.getByRole('button', { name: 'Save purchase', exact: true }).click();
+  await page.getByRole('button', { name: 'Follow-ups', exact: true }).click();
+  await page.getByRole('button', { name: 'Record follow-up', exact: true }).click();
+  await page.getByLabel('Contact outcome / note').fill('Reached customer; call tomorrow');
+  const tomorrow = await page.evaluate(() => {
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Kolkata',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(new Date());
+    const day = new Date(`${parts}T00:00:00Z`);
+    day.setUTCDate(day.getUTCDate() + 1);
+    return day.toISOString().slice(0, 10);
+  });
+  await page.getByLabel('Next contact date (optional for contact)').fill(tomorrow);
+  await page.getByRole('button', { name: 'Save follow-up', exact: true }).click();
+  await page.getByLabel('Follow-up view').selectOption('scheduled');
+  await expect(page.locator('.follow-row')).toContainText('Awaiting refill');
+  await page.getByRole('button', { name: 'Record refill', exact: true }).click();
+  await page.getByLabel('New days 1', { exact: true }).fill('3');
+  await page.getByLabel('Refill choice 1', { exact: true }).selectOption('extend');
+  await page.getByLabel('Enable reminder for Test medicine 10 mg tablet').check();
+  await page.getByRole('button', { name: 'Refresh supply preview' }).click();
+  await expect(page.locator('.supply-estimate')).toContainText('Carry 1 days');
+  await page.getByRole('button', { name: 'Save purchase', exact: true }).click();
+  await page.getByRole('button', { name: 'Purchases', exact: true }).click();
+  await page.getByRole('button', { name: 'View purchase #2', exact: true }).click();
+  await page.getByRole('button', { name: 'Cancel purchase', exact: true }).click();
+  await page.getByLabel('Cancellation reason').fill('Duplicate refill');
+  await page.getByRole('button', { name: 'Confirm cancellation', exact: true }).click();
+  await page.getByRole('button', { name: 'Follow-ups', exact: true }).click();
+  await page.getByLabel('Follow-up view').selectOption('scheduled');
+  await expect(page.locator('.follow-row')).toHaveCount(1);
+  await expect(page.locator('.follow-row')).toContainText(tomorrow);
+  await expect(page.locator('.follow-row')).toContainText('Awaiting refill');
+  await page.screenshot({ path: 'test-results/customer-followups.png', fullPage: true });
+  await app!.close();
+  app = undefined;
+  const restarted = await launch();
+  await login(restarted);
+  await restarted.getByRole('button', { name: 'Customers', exact: true }).click();
+  await restarted.getByLabel('Search customers', { exact: true }).fill('98765');
+  await expect(restarted.locator('.record-row')).toContainText('Asha Rao');
+  await restarted.getByRole('button', { name: 'View purchases', exact: true }).click();
+  await expect(
+    restarted.getByRole('button', { name: 'View purchase #1', exact: true }),
+  ).toBeVisible();
+});
+
+test('business drafts survive locking and catalogue archive/restore preserves the original record', async () => {
+  const page = await launch();
+  await setup(page);
+  await page.getByRole('button', { name: 'Customers', exact: true }).click();
+  await page.getByRole('button', { name: 'Add customer', exact: true }).click();
+  await page.getByLabel('Customer name', { exact: true }).fill('Preserved draft');
+  await page.getByLabel('Phone', { exact: true }).fill('9876543210');
+  await page.getByRole('button', { name: 'Lock workspace' }).click();
+  await login(page);
+  await expect(page.getByLabel('Customer name', { exact: true })).toHaveValue('Preserved draft');
+  await page.getByRole('button', { name: 'Save customer', exact: true }).click();
+  await page.getByRole('button', { name: 'Edit customer', exact: true }).click();
+  await page.getByLabel('Archived — retain history and exclude from new purchases').check();
+  await page.getByRole('button', { name: 'Save customer', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'No matching records' })).toBeVisible();
+  await page.getByLabel('Record status', { exact: true }).selectOption('archived');
+  await page.getByRole('button', { name: 'Edit customer', exact: true }).click();
+  await page.getByLabel('Archived — retain history and exclude from new purchases').uncheck();
+  await page.getByRole('button', { name: 'Save customer', exact: true }).click();
+  await page.getByLabel('Record status', { exact: true }).selectOption('active');
+  await expect(page.locator('.record-row')).toHaveCount(1);
+  await expect(page.locator('.record-row')).toContainText('Preserved draft');
 });

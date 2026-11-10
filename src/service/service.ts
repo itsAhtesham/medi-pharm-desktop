@@ -1,3 +1,4 @@
+import { BusinessService } from '../application/business-service';
 import { BackupManager } from '../backup/manager';
 import { PharmacyDatabase } from '../db/pharmacy-database';
 import { OwnerService } from '../application/owner-service';
@@ -9,6 +10,7 @@ const parentPid = process.ppid;
 if (!port) throw new Error('This service requires an Electron parent.');
 let store: OwnerService;
 let backups: BackupManager;
+let business: BusinessService;
 let queue = Promise.resolve();
 let stopping = false;
 let queued = 0;
@@ -17,6 +19,7 @@ try {
   if (!process.argv[2]) throw new Error('Missing application root.');
   store = new OwnerService(new PharmacyDatabase(process.argv[2], true));
   backups = new BackupManager(store);
+  business = new BusinessService(store);
   port.postMessage({ version: PROTOCOL_VERSION, type: 'ready' });
 } catch {
   port.postMessage({ version: PROTOCOL_VERSION, type: 'fatal' });
@@ -51,6 +54,15 @@ port.on('message', (event) => {
         );
       let data: unknown;
       switch (request.command) {
+        case 'businessQuery':
+          data = business.query(request.input);
+          break;
+        case 'businessSave':
+          data = business.save(request.input);
+          break;
+        case 'purchasePreview':
+          data = business.preview(request.input);
+          break;
         case 'status':
           data = store.status();
           break;

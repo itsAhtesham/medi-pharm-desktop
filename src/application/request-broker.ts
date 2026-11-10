@@ -106,6 +106,7 @@ export class RequestBroker {
         'recover',
         'changePassword',
         'updatePharmacy',
+        'businessSave',
         'backupCreate',
         'backupConfigure',
         'backupRotate',

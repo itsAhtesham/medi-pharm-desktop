@@ -36,7 +36,7 @@ Exact dependency resolution is in `pnpm-lock.yaml`. Forge 8 emits CommonJS main/
 
 The original service owned the sample SQLite database; it now owns the preview pharmacy database with owner authentication and a migration ledger. The legacy storage tests remain isolated. It uses WAL, FULL synchronization, foreign keys, and bounded busy waits. Snapshot tests use the SQLite backup API, convert the closed snapshot to DELETE journal mode, and open a separate restored copy. Those historical tests prove the primitives. The current service additionally implements bounded encrypted archives, retention and journaled live restore. Future schema-version upgrades remain disabled pending concrete migration/recovery rehearsals.
 
-The current UI uses small local CSS files and system fonts. Owner-access/backup screens and initial SQL schema are implemented. Reviewed SQL is authoritative and checked against the actual runtime schema; Drizzle is deferred until a concrete repository need justifies it. Business workflow UI remains pending; no Tailwind/shadcn adoption is required for this slice. No web implementation files have been copied.
+The current UI uses small local CSS files and system fonts. Owner-access/backup screens, the initial SQL schema, and customer/medicine/purchase/follow-up workflows are implemented. Reviewed SQL is authoritative and checked against the actual runtime schema; Drizzle is deferred until a concrete repository need justifies it. The business interface also uses local CSS; no Tailwind/shadcn adoption was required. No web implementation files have been copied.
 
 ## Pending decisions and gates
 

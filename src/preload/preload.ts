@@ -1,3 +1,11 @@
+import {
+  queryResultSchema,
+  mutationResultSchema,
+  previewSchema,
+  type BusinessQuery,
+  type BusinessMutation,
+  type PurchaseDraft,
+} from '../contracts/business';
 import { contextBridge, ipcRenderer } from 'electron';
 import { z } from 'zod';
 import {
@@ -56,6 +64,10 @@ async function invoke<T extends z.ZodType>(
   };
 }
 const api: DesktopApi = Object.freeze({
+  businessQuery: (input: BusinessQuery) => invoke(channels.businessQuery, queryResultSchema, input),
+  businessSave: (input: BusinessMutation) =>
+    invoke(channels.businessSave, mutationResultSchema, input),
+  purchasePreview: (input: PurchaseDraft) => invoke(channels.purchasePreview, previewSchema, input),
   backupRotate: (input: BackupRotation) => invoke(channels.backupRotate, backupStatusSchema, input),
   openBackupFolder: () => invoke(channels.openBackupFolder, z.null()),
   backupStatus: () => invoke(channels.backupStatus, backupStatusSchema),

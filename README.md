@@ -6,7 +6,7 @@ The user confirmed the existing business scope unchanged on 10 November 2026. A 
 
 ## Current status
 
-The app now has a **storage, owner-access and encrypted-recovery development preview**. Business workflows and Windows release verification remain pending; it is not ready for pharmacy operations.
+The app now has an **offline pharmacy workflow development preview**. Windows release verification, CSV exports and release-scale testing remain pending; it is not ready for pharmacy operations.
 
 Implemented:
 
@@ -21,9 +21,13 @@ Implemented:
 - Portable AES-256-GCM `.mpbackup` archives, passphrase-wrapped master keys, optional OS-protected local keys, and explicit in-memory fallback.
 - Manual/daily backups while signed in, independent external-drive verification, 14 daily/8 weekly retention, and pinned restore safety copies.
 - Verified restore previews, fresh-profile restore, damaged-installation recovery, and backup passphrase/key rotation.
+- Customer and medicine create/edit/archive/restore, normalized search, pagination, and inline creation during purchase entry.
+- Purchases with exact quantities, multiple units, dated medicine snapshots, independent supply durations, refill carry-over, previews, corrections and cancellation.
+- Customer-grouped due/scheduled follow-ups, contact outcomes, next-contact dates, manual closure/reopening, and restoration of earlier cycle state after cancellation.
+- Customer/medicine purchase history, purchase details, readable audit history, and populated-data backup/restore validation.
 - Unit, integration, recovery, and packaged desktop tests using temporary synthetic profiles.
 
-Customer, medicine, purchase and follow-up workflows, CSV export, version-to-version migration scripts, and signed installers remain future work. Use test data only. The old prototype snapshot/key-store checks remain historical evidence and isolated storage tests; raw snapshots are no longer exposed by the app.
+CSV export, version-to-version migration scripts, load verification and signed installers remain future work. Use test data only. The old prototype snapshot/key-store checks remain historical evidence and isolated storage tests; raw snapshots are no longer exposed by the app.
 
 ## Develop on Linux
 
@@ -56,7 +60,9 @@ Open **Settings → Encrypted backups & restore** to configure a separate backup
 
 A missing/corrupt database or mismatched migration ledger opens recovery mode. New setup builds privately and publishes through the same verified replacement journal as restore. Startup completes an interrupted prepared replacement or blocks ambiguous/damaged candidates while retaining the original files. Ordinary restore requires a verified current-data safety archive; explicit damaged-data recovery preserves the originals without falsely claiming they are a usable backup.
 
-This preview caps archives at **64 MiB** and retains old live generations/safety archives for inspection. Windows filesystem/DPAPI verification, large-data streaming, and future-schema upgrade rehearsals remain release gates. Existing unsupported schemas are never upgraded automatically. Use synthetic data until the release checks and business workflows are complete.
+This preview caps archives at **64 MiB** and retains old live generations/safety archives for inspection. Windows filesystem/DPAPI verification, large-data streaming, and future-schema upgrade rehearsals remain release gates. Existing unsupported schemas are never upgraded automatically. Use synthetic data until the release checks and owner walkthrough are complete.
+
+See [the business workflow walkthrough](docs/BUSINESS_WORKFLOWS.md) for customer, medicine, purchase and follow-up entry.
 
 ## Test on Windows
 
@@ -68,6 +74,7 @@ The current installer configuration is set up to produce an **unsigned preview**
 
 | Document | Purpose |
 | --- | --- |
+| [Business workflow verification](docs/verification/BUSINESS_WORKFLOWS.md) | Transaction, reconciliation, populated recovery and packaged workflow evidence |
 | [Platform decisions](docs/PLATFORM_DECISIONS.md) | Confirmed scope, prototype identity, pinned toolchain, pending hardware decisions |
 | [Backup and recovery verification](docs/verification/BACKUP_AND_RECOVERY.md) | Current archive, restore, interruption and packaged-test evidence |
 | [Storage and account verification](docs/verification/STORAGE_AND_ACCOUNT.md) | Current owner access, schema, mutation and packaged-test evidence |

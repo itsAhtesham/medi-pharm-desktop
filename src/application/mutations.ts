@@ -29,6 +29,7 @@ export function mutate<T>(
       entityId: string;
       before: unknown;
       after: unknown;
+      reason?: string;
     };
   },
   now = Date.now,
@@ -55,7 +56,7 @@ export function mutate<T>(
       const change = input.apply(owner);
       const result = input.result.parse(change.value);
       db.prepare(
-        'INSERT INTO audit_events(id,pharmacy_id,actor_id,entity_type,entity_id,action,before_json,after_json,created_at) VALUES (?,?,?,?,?,?,?,?,?)',
+        'INSERT INTO audit_events(id,pharmacy_id,actor_id,entity_type,entity_id,action,reason,before_json,after_json,created_at) VALUES (?,?,?,?,?,?,?,?,?,?)',
       ).run(
         randomUUID(),
         owner.pharmacy_id,
@@ -63,6 +64,7 @@ export function mutate<T>(
         change.entityType,
         change.entityId,
         input.command,
+        change.reason ?? '',
         JSON.stringify({ version: 1, value: change.before }),
         JSON.stringify({ version: 1, value: change.after }),
         now(),

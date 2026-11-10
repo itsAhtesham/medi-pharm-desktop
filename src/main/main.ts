@@ -1,3 +1,4 @@
+import { querySchema, businessMutationSchema, purchaseDraftSchema } from '../contracts/business';
 import {
   app,
   BrowserWindow,
@@ -285,6 +286,24 @@ function registerApi(): void {
       }
     });
   };
+  handle(
+    channels.businessQuery,
+    querySchema,
+    'read',
+    (input) => service?.request({ command: 'businessQuery', input }) ?? failure(),
+  );
+  handle(
+    channels.businessSave,
+    businessMutationSchema,
+    'write',
+    (input) => service?.request({ command: 'businessSave', input }) ?? failure(),
+  );
+  handle(
+    channels.purchasePreview,
+    purchaseDraftSchema,
+    'read',
+    (input) => service?.request({ command: 'purchasePreview', input }) ?? failure(),
+  );
   handle(channels.lifecycle, noInputSchema, null, async () => {
     await syncAccountState();
     return success(lifecycle.value);

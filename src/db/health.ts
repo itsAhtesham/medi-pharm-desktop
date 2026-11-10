@@ -1,3 +1,4 @@
+import { inspectBusiness } from './business-health';
 import Database from 'better-sqlite3';
 import { createHash } from 'node:crypto';
 import { initialSchema } from './migrations/0001';
@@ -116,6 +117,7 @@ export function inspectConnection(db: Database.Database, expectedDataset?: strin
     businessDate(row.next_date);
     if (row.manual_date) businessDate(row.manual_date);
   }
+  inspectBusiness(db);
   const count = (table: 'customers' | 'medicines' | 'purchases') =>
     db.prepare(`SELECT count(*) FROM ${table}`).pluck().get() as number;
   return databaseInfoSchema.parse({

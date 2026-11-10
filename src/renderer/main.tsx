@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import type { WorkspaceStatus, Lifecycle, Result, UpdatePharmacy } from '../contracts/desktop';
 import './styles.css';
 import { BackupPanel } from './backup-panel';
+import { BusinessWorkspace } from './business-workspace';
 
 const sections = [
   'Overview',
@@ -285,6 +286,8 @@ function PasswordForm({ busy, run }: { busy: boolean; run: Run }) {
 }
 
 function App() {
+  const [businessDirty, setBusinessDirty] = useState(false);
+  const [businessReset, setBusinessReset] = useState(0);
   const [section, setSection] = useState<Section>('Overview');
   const [status, setStatus] = useState<WorkspaceStatus | null>(null);
   const [error, setError] = useState('');
@@ -325,6 +328,8 @@ function App() {
       if (disposed || (lifecycleRef.current && next.revision <= lifecycleRef.current.revision))
         return;
       if (next.state === 'maintenance' && next.operation === 'restore') {
+        setBusinessReset((value) => value + 1);
+        setBusinessDirty(false);
         setDraft(null);
         setPending(null);
       }
@@ -355,8 +360,8 @@ function App() {
     };
   }, []);
   useEffect(() => {
-    void window.mediPharm.setDraftDirty(Boolean(draft) || Boolean(pending));
-  }, [draft, pending]);
+    void window.mediPharm.setDraftDirty(Boolean(draft) || Boolean(pending) || businessDirty);
+  }, [draft, pending, businessDirty]);
   const run: Run = async (action, successMessage = '') => {
     setBusy(true);
     setError('');
@@ -412,7 +417,7 @@ function App() {
           {sections.map((item, index) => (
             <button
               key={item}
-              disabled={!ready}
+              disabled={!ready || busy || businessDirty}
               aria-current={section === item ? 'page' : undefined}
               onClick={() => setSection(item)}
             >
@@ -456,9 +461,9 @@ function App() {
           <div className="notice">
             <span aria-hidden="true">i</span>
             <p>
-              <strong>Development preview.</strong> Owner access and pharmacy settings are
-              available. Business workflows are still being built. Encrypted backup and restore are
-              available for testing. Use test data for now.
+              <strong>Development preview.</strong> Customer, medicine, purchase and follow-up
+              workflows are available for testing. Windows release checks are still pending. Use
+              test data for now.
             </p>
           </div>
           {lifecycle?.state === 'maintenance' && (
@@ -511,13 +516,13 @@ function App() {
               <div className="page-heading">
                 <div>
                   <p className="eyebrow">YOUR PHARMACY, LOCALLY</p>
-                  <h1>{section === 'Overview' ? 'A fresh start.' : section}</h1>
+                  <h1>{section === 'Overview' ? 'Your pharmacy today.' : section}</h1>
                   <p className="subtitle">
                     {section === 'Overview'
-                      ? 'Your workspace is ready for the next steps.'
+                      ? 'Review customer reminders and record today’s supplies.'
                       : section === 'Settings'
                         ? 'Manage your pharmacy and local owner access.'
-                        : 'This workflow is planned for a later implementation phase.'}
+                        : 'Saved locally on this computer. Business dates use Asia/Kolkata.'}
                   </p>
                 </div>
               </div>
@@ -538,10 +543,13 @@ function App() {
                     <h2>Welcome to {status.pharmacy.name}</h2>
                     <p className="body-copy">
                       You are signed in as <strong>{status.identifier}</strong>. Customer records,
-                      medicine supplies and follow-ups will be added in the upcoming business
-                      workflow phases.
+                      medicine supplies and follow-ups are available in the workspace.
                     </p>
-                    <button className="primary" onClick={() => setSection('Settings')}>
+                    <button
+                      className="primary"
+                      disabled={businessDirty || busy}
+                      onClick={() => setSection('Settings')}
+                    >
                       Open pharmacy settings
                     </button>
                   </section>
@@ -604,17 +612,20 @@ function App() {
                   </div>
                   <BackupPanel disabled={busy} onRestored={restored} />
                 </>
-              ) : (
-                <section className="card empty-state">
-                  <div className="empty-icon" aria-hidden="true">
-                    ◇
-                  </div>
-                  <h2>{section} is planned</h2>
-                  <p>Local owner access is ready. This business workflow is not available yet.</p>
-                </section>
-              )}
+              ) : null}
             </>
           )}
+          <div hidden={!ready || section === 'Settings'}>
+            <BusinessWorkspace
+              key={businessReset}
+              section={section}
+              active={ready && section !== 'Settings'}
+              enabled={lifecycle?.state === 'ready' && !busy}
+              epoch={lifecycle?.revision ?? 0}
+              onDirty={setBusinessDirty}
+              onCommit={() => void refresh()}
+            />
+          </div>
           <footer>
             <span>Local data · No cloud account</span>
             <button

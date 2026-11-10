@@ -2,7 +2,7 @@
 
 Build the desktop application in small, verifiable phases, starting with a working packaged SQLite prototype and ending with tested Windows 10 and 11 installers. Daily development takes place on Linux. The application stores data locally, starts its services when opened, and stops them when closed.
 
-Status updated 11 November 2026: foundation, owner access, storage reliability and the first encrypted backup/restore implementation are present. Phases 03–06 remain in progress against their full release gates. Windows verification, future-schema upgrades and business workflows remain open. See [backup/recovery evidence](docs/verification/BACKUP_AND_RECOVERY.md), [storage/account evidence](docs/verification/STORAGE_AND_ACCOUNT.md), and the historical foundation reports. Original planning date: 8 November 2026.
+Status updated 11 November 2026: foundation, owner access, storage reliability and the first encrypted backup/restore implementation are present. Phases 03–06 remain in progress against their full release gates. Customer/medicine, purchase/supply and follow-up workflows are implemented in the development preview. Windows verification, future-schema upgrades, CSV exports and release-scale workflow testing remain open. See [workflow evidence](docs/verification/BUSINESS_WORKFLOWS.md). See [backup/recovery evidence](docs/verification/BACKUP_AND_RECOVERY.md), [storage/account evidence](docs/verification/STORAGE_AND_ACCOUNT.md), and the historical foundation reports. Original planning date: 8 November 2026.
 
 ## Scope and document ownership
 
@@ -23,10 +23,10 @@ The first release serves one pharmacy, one local owner, and one computer. No LAN
 | 04 | Owner access and reliable mutation infrastructure | 03 | 2 Storage and account | Owner access, shared transaction/receipt/audit pipeline and transactional numbering implemented; workflow integration pending |
 | 05 | Encrypted local and external backup creation | 04 | 3 Backup and recovery | Portable archives, key setup/rotation, scheduling, external copies and retention implemented; release gates pending |
 | 06 | Restore and migration recovery | 05 | 3 Backup and recovery | Preview, safety backup, journaled restore and damaged-data recovery implemented; future migrations/Windows gates pending |
-| 07 | Customer and medicine catalog workflows | 04, 06 | 4 Baseline workflows | Not started |
-| 08 | Medicine supply domain and purchase services | 07 | 4 Baseline workflows | Not started |
-| 09 | Purchase entry and correction interface | 08 | 4 Baseline workflows | Not started |
-| 10 | Follow-ups, histories, settings, and export | 09 | 4 Baseline workflows | Not started |
+| 07 | Customer and medicine catalog workflows | 04, 06 | 4 Baseline workflows | Implemented and covered by Linux service/desktop journeys |
+| 08 | Medicine supply domain and purchase services | 07 | 4 Baseline workflows | Implemented; wider race/load matrix pending |
+| 09 | Purchase entry and correction interface | 08 | 4 Baseline workflows | Implemented; Windows/manual accessibility walkthrough pending |
+| 10 | Follow-ups, histories, settings, and export | 09 | 4 Baseline workflows | Follow-ups and purchase/audit histories implemented; CSV and consolidated supply-history view pending |
 | 11 | Signed installers and offline upgrade flow | 06, 10, signing access | 5 Packaging and updates | Not started |
 | 12 | Reliability, performance, and release verification | 11 | 6 Reliability and owner walkthrough | Not started |
 | 13 | Owner pilot, recovery rehearsal, and handover | 12 | 6 Reliability and owner walkthrough | Not started |
@@ -235,13 +235,13 @@ Normal restore requires a verified safety archive and an unchanged preview revis
 
 ### Implementation tasks
 
-- [ ] **P07-01** Implement customer create/edit/archive/restore services through the shared mutation pipeline. Require a normalized valid phone; allow shared family numbers and optional age.
-- [ ] **P07-02** Implement medicine create/edit/archive/restore with a normalized name/strength/form identity. Handle existing archived matches with a restore/reuse choice instead of creating duplicates.
-- [ ] **P07-03** Implement bounded search, stable sorting, pagination, list counts, and selection of active records. Preserve archived records in historical detail views.
-- [ ] **P07-04** Build customer and medicine list/detail screens, edit dialogs, conflict handling, and accessible search/select controls.
-- [ ] **P07-05** Implement reusable inline-create dialogs and callbacks for purchase entry. Preserve the parent draft when a dialog opens, fails, retries, or closes.
-- [ ] **P07-06** Add version checks and audit events for changes, including archive/restore. Enforce the documented effect of archived customers/medicines on new versus historical purchases.
-- [ ] **P07-07** Add service and desktop journeys for exact duplicate detection, normalized search, optional values, stale edits, and repeated creates after a lost response.
+- [x] **P07-01** Implement customer create/edit/archive/restore services through the shared mutation pipeline. Require a normalized valid phone; allow shared family numbers and optional age.
+- [x] **P07-02** Implement medicine create/edit/archive/restore with a normalized name/strength/form identity. Handle existing archived matches with a restore/reuse choice instead of creating duplicates.
+- [x] **P07-03** Implement bounded search, stable sorting, pagination, list counts, and selection of active records. Preserve archived records in historical detail views.
+- [x] **P07-04** Build customer and medicine list/detail screens, edit dialogs, conflict handling, and accessible search/select controls.
+- [x] **P07-05** Implement reusable inline-create dialogs and callbacks for purchase entry. Preserve the parent draft when a dialog opens, fails, retries, or closes.
+- [x] **P07-06** Add version checks and audit events for changes, including archive/restore. Enforce the documented effect of archived customers/medicines on new versus historical purchases.
+- [x] **P07-07** Add service and desktop journeys for exact duplicate detection, normalized search, optional values, stale edits, and repeated creates after a lost response.
 
 ### Required verification
 
@@ -259,13 +259,13 @@ Create records, restart the app, and find them by name/phone. Test whitespace/ca
 
 ### Implementation tasks
 
-- [ ] **P08-01** Implement pure calendar helpers, exact quantities, supply-date calculations, reminder lead calculation, and follow-up-state derivation with an injectable clock.
-- [ ] **P08-02** Implement supply-context queries and a deterministic revision covering all relevant purchase, supply, and follow-up state. Return enough information for a preview without exposing internal records indiscriminately.
-- [ ] **P08-03** Implement purchase creation with item snapshots, one supply per distinct medicine, opt-in reminders, sequence allocation, and a single atomic receipt/audit commit.
-- [ ] **P08-04** Implement extend/replace decisions, nullable versus zero remaining overrides, manual reminder validation, and explicit confirmation for dates at/after run-out.
-- [ ] **P08-05** Implement chain reconciliation in purchase-date/sequence order. Recompute dependent estimates, close superseded follow-ups, and retain the previous contact/snooze/manual-closure state.
-- [ ] **P08-06** Implement correction with reason, cancellation, medicine removal/re-addition, purchase-date changes, and customer moves. Reconcile every affected old/new chain within the same transaction.
-- [ ] **P08-07** Preserve stale-version/revision conflicts and uncertain retry semantics. Return affected entities/revisions only after commit.
+- [x] **P08-01** Implement pure calendar helpers, exact quantities, supply-date calculations, reminder lead calculation, and follow-up-state derivation with an injectable clock.
+- [x] **P08-02** Implement supply-context queries and a deterministic revision covering all relevant purchase, supply, and follow-up state. Return enough information for a preview without exposing internal records indiscriminately.
+- [x] **P08-03** Implement purchase creation with item snapshots, one supply per distinct medicine, opt-in reminders, sequence allocation, and a single atomic receipt/audit commit.
+- [x] **P08-04** Implement extend/replace decisions, nullable versus zero remaining overrides, manual reminder validation, and explicit confirmation for dates at/after run-out.
+- [x] **P08-05** Implement chain reconciliation in purchase-date/sequence order. Recompute dependent estimates, close superseded follow-ups, and retain the previous contact/snooze/manual-closure state.
+- [x] **P08-06** Implement correction with reason, cancellation, medicine removal/re-addition, purchase-date changes, and customer moves. Reconcile every affected old/new chain within the same transaction.
+- [x] **P08-07** Preserve stale-version/revision conflicts and uncertain retry semantics. Return affected entities/revisions only after commit.
 - [ ] **P08-08** Create a service-level lifecycle matrix that exercises multi-medicine purchases and changes to earlier as well as latest supplies. Include actual file-backed transaction races and injected rollback failures.
 
 ### Required business examples
@@ -299,14 +299,14 @@ Use fixed fixture dates and clocks so these tests do not change behavior as real
 
 ### Implementation tasks
 
-- [ ] **P09-01** Build customer selection, purchase date, notes, medicine rows, quantities, and units. Reject future purchase dates and duplicate medicine/unit rows with understandable messages.
-- [ ] **P09-02** Group supply fields by distinct medicine. Add new days, supply start, reminder opt-in, extend/replace choice, optional remaining adjustment, and manual reminder controls.
-- [ ] **P09-03** Load context for the current customer/date/medicine selection. Discard stale asynchronous results, indicate loading/errors, and provide explicit refresh after a conflict.
-- [ ] **P09-04** Show estimated carried days, run-out, and reminder dates before saving. Require a deliberate refill choice where prior supply exists and reset invalid confirmations when dependent values change.
-- [ ] **P09-05** Connect inline customer/medicine creation without losing existing form values. Preserve grouping when a medicine appears in different units or a row is removed.
-- [ ] **P09-06** Integrate the shared mutation helper, loading/disabled states, structured validation, reauthentication, frozen uncertain retries, and post-save navigation.
-- [ ] **P09-07** Build purchase list/detail, correction with a reason, and cancellation confirmation. Present the consequences for related supplies and preserve dated snapshots/history.
-- [ ] **P09-08** Implement unsaved-change behavior and keyboard operation, including date controls and dialogs. Treat app-exit loss of unsaved in-memory drafts honestly; persistent draft recovery is not assumed.
+- [x] **P09-01** Build customer selection, purchase date, notes, medicine rows, quantities, and units. Reject future purchase dates and duplicate medicine/unit rows with understandable messages.
+- [x] **P09-02** Group supply fields by distinct medicine. Add new days, supply start, reminder opt-in, extend/replace choice, optional remaining adjustment, and manual reminder controls.
+- [x] **P09-03** Load context for the current customer/date/medicine selection. Discard stale asynchronous results, indicate loading/errors, and provide explicit refresh after a conflict.
+- [x] **P09-04** Show estimated carried days, run-out, and reminder dates before saving. Require a deliberate refill choice where prior supply exists and reset invalid confirmations when dependent values change.
+- [x] **P09-05** Connect inline customer/medicine creation without losing existing form values. Preserve grouping when a medicine appears in different units or a row is removed.
+- [x] **P09-06** Integrate the shared mutation helper, loading/disabled states, structured validation, reauthentication, frozen uncertain retries, and post-save navigation.
+- [x] **P09-07** Build purchase list/detail, correction with a reason, and cancellation confirmation. Present the consequences for related supplies and preserve dated snapshots/history.
+- [x] **P09-08** Implement unsaved-change behavior and keyboard operation, including date controls and dialogs. Treat app-exit loss of unsaved in-memory drafts honestly; persistent draft recovery is not assumed.
 
 ### Required verification
 
@@ -324,13 +324,13 @@ Run a complete purchase with two medicines and mixed units, inline creation, and
 
 ### Implementation tasks
 
-- [ ] **P10-01** Implement dashboard queries for due customers and counts. Implement dedicated follow-up tabs grouped/paginated by customer so one customer's matching medicines are not split across pages.
-- [ ] **P10-02** Implement contact, optional next contact date, snooze, close with reason, and explicit reopen for an eligible current cycle. Preserve separate status and contact history per medicine.
-- [ ] **P10-03** Implement contacted/awaiting-refill and follow-up-again presentation. Add refill entry links that preselect the relevant customer/medicine without guessing new supply duration or reminder opt-in.
+- [x] **P10-01** Implement dashboard queries for due customers and counts. Implement dedicated follow-up tabs grouped/paginated by customer so one customer's matching medicines are not split across pages.
+- [x] **P10-02** Implement contact, optional next contact date, snooze, close with reason, and explicit reopen for an eligible current cycle. Preserve separate status and contact history per medicine.
+- [x] **P10-03** Implement contacted/awaiting-refill and follow-up-again presentation. Add refill entry links that preselect the relevant customer/medicine without guessing new supply duration or reminder opt-in.
 - [ ] **P10-04** Build current customer supply, dated purchase history, medicine purchase history, and event/audit detail views. Distinguish active, cancelled, superseded, and manually closed records.
-- [ ] **P10-05** Implement pharmacy settings, password change, logout, backup settings access, and the visible data/backup status. Keep device preferences separate from backed-up pharmacy settings.
+- [x] **P10-05** Implement pharmacy settings, password change, logout, backup settings access, and the visible data/backup status. Keep device preferences separate from backed-up pharmacy settings.
 - [ ] **P10-06** Implement approved CSV exports through a native save dialog and an exact enum of export kinds. Bound memory, neutralize spreadsheet formulas, close all handles in success/failure paths, and surface cancellation/disk errors accurately.
-- [ ] **P10-07** Refresh queries after commits, route changes, app focus/resume, and relevant date changes. A lost process event must not permanently leave a view stale. Do not add SSE or a network listener for local refresh.
+- [x] **P10-07** Refresh queries after commits, route changes, app focus/resume, and relevant date changes. A lost process event must not permanently leave a view stale. Do not add SSE or a network listener for local refresh.
 - [ ] **P10-08** Add end-to-end journeys spanning purchase, contact, scheduling, refill, cancellation, reopen, history, export, logout, and a subsequent app restart.
 
 ### Required verification
@@ -340,6 +340,14 @@ Confirm contact does not close a reminder. A future contact date moves it to Sch
 **Outputs:** dashboard/follow-up workflows, customer/medicine history views, settings, exports, and an integrated owner journey.
 
 **Exit gate:** the confirmed business baseline is usable end to end through the desktop app, and reminders remain correct across restart and pharmacy-date changes.
+
+### Current workflow implementation notes
+
+The service uses the whole database revision as a conservative purchase-context token. This includes every affected chain and follow-up change, but unrelated edits can also invalidate a preview. No schema migration was needed; the immutable initial SQL remains unchanged. New supply duration is entered explicitly, including refill entry links; reminder opt-in defaults off.
+
+Catalogue and purchase editors preserve in-memory drafts across locking and storage reauthentication. Navigation is disabled while a business editor is open; save or explicitly discard before changing sections. Uncertain writes retain the exact command/request ID for retry. Closing the application does not persist an unsaved draft.
+
+Customer/medicine histories currently list purchases with per-purchase supplies and audit details. A consolidated current-supply view, CSV export, the broader real-file race/fault matrix and Windows keyboard/accessibility walkthrough remain open. Completed task checkboxes refer to the exercised preview slice, not production acceptance.
 
 ## Phase 11 Signed installers and offline upgrade flow
 

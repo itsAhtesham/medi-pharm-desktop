@@ -1,6 +1,6 @@
 # Test the desktop preview on Windows
 
-Use made-up pharmacy/account details. Owner access, pharmacy settings, encrypted backups and journaled restore are implemented. Business workflows and Windows release gates remain pending.
+Use made-up pharmacy/account details. Owner access, pharmacy settings, encrypted backups and journaled restore are implemented. Customer, medicine, purchase/supply and follow-up workflows are implemented for preview testing. Windows release gates remain pending.
 
 ## Prepare the native build
 
@@ -61,3 +61,15 @@ The preview caps archives at 64 MiB and checks eligibility while signed in. Rete
 ## Record evidence
 
 Record source commit, executable/installer SHA-256 (`Get-FileHash -Algorithm SHA256 <path>`), OS build, architecture, hardware, commands/results, and failure screenshots. Windows 11 success does not certify Windows 10. Repeat target checks on Windows 10 before closing platform gates. Linux tests cannot certify Windows ACLs, DPAPI, native installation, signing, or upgrade behavior.
+
+## Business workflow rehearsal
+
+Follow [the workflow walkthrough](BUSINESS_WORKFLOWS.md) using synthetic records. On Windows 11 and Windows 10, verify:
+
+1. Create/search/edit/archive/restore customers and medicines. Shared family phone numbers are allowed; normalized duplicate medicines are refused, including archived matches.
+2. Create a customer and medicine inline from a purchase without losing notes. Enter exact fractional quantities, multiple units and independent days/reminder choices for two medicines.
+3. Rehearse extend versus replace and explicit zero remaining; review date calculations. Correct an earlier purchase and cancel a latest refill, verifying the resulting chain and history.
+4. Record contact and schedule another date, close/reopen a cycle, and verify a cancellation restores the preceding contact/schedule/closure state.
+5. Lock/unlock with a draft, verify unsaved-close confirmation, restart the app and find the saved customer/purchase histories.
+6. Back up the populated database, restore it into a fresh Windows profile, and verify purchase counts, dated labels, follow-up state and history.
+7. Use keyboard-only controls and Windows date inputs; inspect scrolling/focus at the laptop's normal display scaling. Record any Windows-specific differences rather than treating Linux UI tests as certification.

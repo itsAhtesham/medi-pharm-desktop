@@ -1,3 +1,16 @@
+import {
+  querySchema,
+  queryResultSchema,
+  businessMutationSchema,
+  mutationResultSchema,
+  purchaseDraftSchema,
+  previewSchema,
+  type BusinessQuery,
+  type BusinessData,
+  type BusinessMutation,
+  type PurchaseDraft,
+  type Preview,
+} from './business';
 import { z } from 'zod';
 import {
   backupAccessSchema,
@@ -170,6 +183,13 @@ export type WorkspaceStatus = z.infer<typeof workspaceStatusSchema>;
 export type AccountState = z.infer<typeof accountStateSchema>;
 const envelope = { version, id: z.uuid() };
 export const serviceRequestSchema = z.discriminatedUnion('command', [
+  z.object({ ...envelope, command: z.literal('businessQuery'), input: querySchema }).strict(),
+  z
+    .object({ ...envelope, command: z.literal('businessSave'), input: businessMutationSchema })
+    .strict(),
+  z
+    .object({ ...envelope, command: z.literal('purchasePreview'), input: purchaseDraftSchema })
+    .strict(),
   z.object({ ...envelope, command: z.literal('accountState') }).strict(),
   z.object({ ...envelope, command: z.literal('setup'), input: setupSchema }).strict(),
   z.object({ ...envelope, command: z.literal('login'), input: loginSchema }).strict(),
@@ -226,6 +246,9 @@ export type ServiceCommand = ServiceRequest extends infer R
     : never
   : never;
 export const serviceResultSchemas = {
+  businessQuery: queryResultSchema,
+  businessSave: mutationResultSchema,
+  purchasePreview: previewSchema,
   accountState: accountStateSchema,
   setup: accountStateSchema,
   login: accountStateSchema,
@@ -257,6 +280,9 @@ export const serviceMessageSchema = z.discriminatedUnion('type', [
 ]);
 
 export interface DesktopApi {
+  businessQuery(input: BusinessQuery): Promise<Result<BusinessData>>;
+  businessSave(input: BusinessMutation): Promise<Result<z.infer<typeof mutationResultSchema>>>;
+  purchasePreview(input: PurchaseDraft): Promise<Result<Preview>>;
   openBackupFolder(): Promise<Result<null>>;
   backupRotate(input: BackupRotation): Promise<Result<BackupStatus>>;
   backupStatus(): Promise<Result<BackupStatus>>;
@@ -281,6 +307,9 @@ export interface DesktopApi {
   onLifecycle(listener: (state: Lifecycle) => void): () => void;
 }
 export const channels = {
+  businessQuery: 'desktop:business-query',
+  businessSave: 'desktop:business-save',
+  purchasePreview: 'desktop:purchase-preview',
   openBackupFolder: 'desktop:open-backup-folder',
   backupRotate: 'desktop:backup-rotate',
   backupStatus: 'desktop:backup-status',
