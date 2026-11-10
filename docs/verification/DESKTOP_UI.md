@@ -30,3 +30,7 @@ Linux packaging and Electron zoom checks do not certify Windows display scaling,
 ## Colour refinement
 
 The subsequent colour pass adds workflow-specific navigation/editor accents, two-tone SVG icons with coloured badges, soft card gradients and stronger dashboard accents. Neutral record tables and labelled statuses are retained. Lint, formatting, all TypeScript configurations and Linux packaging pass; the existing packaged keyboard-navigation and dashboard/size/zoom journeys pass (2 tests). No business or storage behavior changed in this pass.
+
+## Neutral background and icon contrast
+
+The next visual refinement replaces the blue-tinted workspace, sidebar, panels, forms and tables with white/grey surfaces and charcoal framing. Section colour is concentrated in solid icon badges and accent borders; white SVG strokes are thicker for clearer contrast. Lint, formatting, TypeScript checks, Linux packaging and the existing packaged dashboard/zoom journey are the validation scope for this styling-only update.

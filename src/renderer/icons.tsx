@@ -110,13 +110,13 @@ export function Icon({ name, className = '' }: { name: IconName; className?: str
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
-      strokeWidth="1.8"
+      strokeWidth="2.2"
       strokeLinecap="round"
       strokeLinejoin="round"
       aria-hidden="true"
       focusable="false"
     >
-      <g fill="currentColor" fillOpacity="0.18" stroke="none">
+      <g fill="currentColor" fillOpacity="0.22" stroke="none">
         {tones[name]}
       </g>
       {paths[name]}
