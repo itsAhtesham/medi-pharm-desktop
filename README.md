@@ -11,7 +11,7 @@ The app now has an **offline pharmacy workflow development preview**. Windows re
 Implemented:
 
 - Electron window, bundled React interface, validated IPC, and service-owned SQLite.
-- Blue desktop shell, horizontal navigation, grouped shortcuts, live dashboard metrics and purchase-count chart, compact record tables, and responsive quick actions.
+- Neutral desktop shell with colourful high-contrast icons, horizontal navigation, grouped shortcuts, live dashboard metrics and purchase-count chart, compact record tables, and responsive quick actions.
 - Explicit empty-pharmacy setup, local owner login, lock/logout, password changes, and rotating offline recovery codes.
 - Salted, versioned scrypt hashes; persistent failed-login throttling; eight-hour in-memory sessions checked by the service.
 - Reviewed initial schema, migration checksum ledger, dataset identity, strict constraints and health checks.
@@ -23,6 +23,7 @@ Implemented:
 - Manual/daily backups while signed in, independent external-drive verification, 14 daily/8 weekly retention, and pinned restore safety copies.
 - Verified restore previews, fresh-profile restore, damaged-installation recovery, and backup passphrase/key rotation.
 - Customer and medicine create/edit/archive/restore, normalized search, pagination, and inline creation during purchase entry.
+- Clear/Save/Discard form controls and discard-or-continue confirmation when navigating away from unsaved drafts.
 - Purchases with exact quantities, multiple units, dated medicine snapshots, independent supply durations, refill carry-over, previews, corrections and cancellation.
 - Customer-grouped due/scheduled follow-ups, contact outcomes, next-contact dates, manual closure/reopening, and restoration of earlier cycle state after cancellation.
 - Customer/medicine purchase history, purchase details, readable audit history, and populated-data backup/restore validation.

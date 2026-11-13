@@ -39,7 +39,7 @@ Expand **Contact history** to see contact and system reconciliation events. Audi
 
 ## Drafts and recovery
 
-Save or explicitly discard an editor before changing sections. Locking or storage reauthentication preserves the in-memory draft. Closing the application loses unsaved drafts after confirmation. A restore clears drafts so they cannot be submitted into the restored dataset.
+Customer and medicine forms have Clear, Save and Discard controls. Clear restores the initial form values, including saved values when editing. Discard closes the editor; for inline creation it returns to the purchase with its draft retained. Changing sections with an unsaved business draft asks whether to discard and switch or continue editing. Confirming discards the whole unfinished workflow, including any parent purchase. Saving or an uncertain save result temporarily blocks navigation and resetting. Locking or storage reauthentication preserves the in-memory draft. Closing the application loses unsaved drafts after confirmation. A restore clears drafts so they cannot be submitted into the restored dataset.
 
 If a save response is uncertain, the submission stays frozen. Recover storage/sign in and use **Retry same submission**; its original request ID prevents duplicate purchases or catalogue records. A known stale-record conflict requires reopening the latest saved record and reapplying the intended correction. Purchase-context conflicts can be resolved by refreshing the preview.
 

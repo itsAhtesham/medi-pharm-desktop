@@ -156,6 +156,7 @@ export function BusinessWorkspace({
   enabled,
   epoch,
   onDirty,
+  onBlocked,
   onCommit,
 }: {
   section: string;
@@ -164,6 +165,7 @@ export function BusinessWorkspace({
   enabled: boolean;
   epoch: number;
   onDirty: (dirty: boolean) => void;
+  onBlocked: (blocked: boolean) => void;
   onCommit: () => void;
 }) {
   const [search, setSearch] = useState('');
@@ -176,6 +178,7 @@ export function BusinessWorkspace({
   const [working, setWorking] = useState(false);
   const [tick, setTick] = useState(0);
   const [editor, setEditor] = useState<Editor | null>(null);
+  const catalogBaseline = useRef<CatalogDraft | null>(null);
   const [parent, setParent] = useState<PurchaseDraft | null>(null);
   const [pending, setPending] = useState<BusinessMutation | null>(null);
   const [preview, setPreview] = useState<Preview | null>(null);
@@ -204,6 +207,7 @@ export function BusinessWorkspace({
             : 'followups';
   const dirty = editor !== null || pending !== null;
   useEffect(() => onDirty(dirty), [dirty, onDirty]);
+  useEffect(() => onBlocked(working || pending !== null), [working, pending, onBlocked]);
   useEffect(() => {
     setPage(0);
     setSearch('');
@@ -222,12 +226,11 @@ export function BusinessWorkspace({
     setError('');
     setMessage('');
     setPreview(null);
-    if (intent.action === 'newCustomer' || intent.action === 'newMedicine')
-      setEditor({
-        type: 'catalog',
-        inline: false,
-        value: freshCatalog(intent.action === 'newCustomer' ? 'customer' : 'medicine'),
-      });
+    if (intent.action === 'newCustomer' || intent.action === 'newMedicine') {
+      const value = freshCatalog(intent.action === 'newCustomer' ? 'customer' : 'medicine');
+      catalogBaseline.current = value;
+      setEditor({ type: 'catalog', inline: false, value });
+    }
     if (intent.action === 'newPurchase') setEditor({ type: 'purchase', value: freshPurchase() });
     if (intent.action === 'due' || intent.action === 'scheduled' || intent.action === 'all')
       setTab(intent.action);
@@ -271,6 +274,7 @@ export function BusinessWorkspace({
     };
   }, []);
   const begin = (e: Editor) => {
+    if (e.type === 'catalog') catalogBaseline.current = e.value;
     setEditor(e);
     setError('');
     setMessage('');
@@ -415,6 +419,13 @@ export function BusinessWorkspace({
       setWorking(false);
     }
   }
+  const discardEditor = () => {
+    setEditor(parent ? { type: 'purchase', value: parent } : null);
+    setParent(null);
+    setPreview(null);
+    setError('');
+    setMessage('');
+  };
   const blocked = !enabled || working || Boolean(pending);
   const catalog = editor?.type === 'catalog' ? editor.value : null;
   const purchase = editor?.type === 'purchase' ? editor.value : null;
@@ -573,9 +584,35 @@ export function BusinessWorkspace({
                     Archived — retain history and exclude from new purchases
                   </label>
                 )}
-                <button className="primary" type="submit">
-                  Save {catalog.kind}
-                </button>
+                <div className="business-actions form-actions">
+                  <button
+                    className="secondary"
+                    type="button"
+                    onClick={() => {
+                      if (editor.type !== 'catalog' || !catalogBaseline.current) return;
+                      setEditor({
+                        ...editor,
+                        value: { ...catalogBaseline.current, requestId: crypto.randomUUID() },
+                      });
+                      setError('');
+                      setMessage('');
+                      setPreview(null);
+                    }}
+                  >
+                    Clear
+                  </button>
+                  <button className="primary" type="submit" aria-label={`Save ${catalog.kind}`}>
+                    Save
+                  </button>
+                  <button
+                    className="secondary"
+                    type="button"
+                    aria-label={parent ? 'Discard inline changes' : 'Discard draft'}
+                    onClick={discardEditor}
+                  >
+                    Discard
+                  </button>
+                </div>
               </form>
             )}
             {purchase && (
@@ -918,17 +955,11 @@ export function BusinessWorkspace({
                 </button>
               </form>
             )}
-            <button
-              className="text-button"
-              onClick={() => {
-                setEditor(parent ? { type: 'purchase', value: parent } : null);
-                setParent(null);
-                setPreview(null);
-                setError('');
-              }}
-            >
-              Discard {parent ? 'inline changes' : 'draft'}
-            </button>
+            {!catalog && (
+              <button className="text-button" type="button" onClick={discardEditor}>
+                Discard {parent ? 'inline changes' : 'draft'}
+              </button>
+            )}
           </fieldset>
         </section>
       ) : (

@@ -34,3 +34,9 @@ The subsequent colour pass adds workflow-specific navigation/editor accents, two
 ## Neutral background and icon contrast
 
 The next visual refinement replaces the blue-tinted workspace, sidebar, panels, forms and tables with white/grey surfaces and charcoal framing. Section colour is concentrated in solid icon badges and accent borders; white SVG strokes are thicker for clearer contrast. Lint, formatting, TypeScript checks, Linux packaging and the existing packaged dashboard/zoom journey are the validation scope for this styling-only update.
+
+## Form actions and draft navigation — preview 0.1.1
+
+Customer and medicine editors now present Clear, Save and Discard together. New forms reset to defaults; existing edits reset to the originally loaded values/version. Inline reset/discard preserves the parent purchase, while confirmed navigation discards the whole unsaved workflow. Tabs and shortcuts open a modal confirmation instead of being disabled by an ordinary draft. Continue editing and Escape retain values; a lifecycle transition away from ready cancels pending navigation. Saves in progress or with unknown results still block navigation and reset/discard.
+
+Validation: `pnpm check` passes all 88 unit/integration/recovery tests; Linux packaging succeeds; all 23 packaged desktop journeys pass. Four added journeys cover customer and medicine reset/save/discard, default dialog focus and Escape, continuing versus switching, inline parent preservation and shortcut targets, and uncertain-save protection across lock/sign-in. The customer case additionally checks locking while the popup is open. Screenshots are generated as `test-results/customer-form-actions.png` and `test-results/discard-navigation.png`. Windows-native behavior and installation of the rebuilt 0.1.1 preview still require testing on the Windows laptop.

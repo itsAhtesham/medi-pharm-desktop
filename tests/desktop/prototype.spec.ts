@@ -756,7 +756,7 @@ test('dashboard quick actions preserve drafts, show saved totals and fit desktop
   await quick.getByRole('button', { name: 'New customer', exact: true }).click();
   await page.getByLabel('Customer name', { exact: true }).fill('Dashboard Customer');
   await page.getByLabel('Phone', { exact: true }).fill('9876543210');
-  await expect(page.getByRole('button', { name: 'Overview', exact: true })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Overview', exact: true })).toBeEnabled();
   await page.getByRole('button', { name: 'Lock workspace' }).click();
   expect(await page.evaluate(() => window.mediPharm.dashboard())).toMatchObject({
     ok: false,
@@ -898,4 +898,129 @@ test('dashboard quick actions preserve drafts, show saved totals and fit desktop
     await expect(page.getByRole('button', { name: 'Add customer', exact: true })).toBeVisible();
     await page.getByRole('button', { name: 'Overview', exact: true }).click();
   }
+});
+
+for (const kind of ['customer', 'medicine'] as const) {
+  test(`${kind} form clears, resets edits, and confirms draft navigation`, async () => {
+    const page = await launch();
+    await setup(page);
+    const section = kind === 'customer' ? 'Customers' : 'Medicines';
+    const other = kind === 'customer' ? 'Medicines' : 'Customers';
+    const name = page.getByLabel(kind === 'customer' ? 'Customer name' : 'Medicine name', {
+      exact: true,
+    });
+    const secondary = page.getByLabel(kind === 'customer' ? 'Phone' : 'Strength', { exact: true });
+    await page.getByRole('button', { name: section, exact: true }).click();
+    await page.getByRole('button', { name: `Add ${kind}`, exact: true }).click();
+    await name.fill('Unsaved entry');
+    await secondary.fill(kind === 'customer' ? '9876543210' : '10 mg');
+    await page.getByRole('button', { name: other, exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: 'Discard unsaved draft?' });
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByRole('button', { name: 'Continue editing' })).toBeFocused();
+    if (kind === 'customer') await page.screenshot({ path: 'test-results/discard-navigation.png' });
+    await page.keyboard.press('Escape');
+    await expect(dialog).toHaveCount(0);
+    await expect(name).toHaveValue('Unsaved entry');
+    await page.getByRole('button', { name: other, exact: true }).click();
+    await dialog.getByRole('button', { name: 'Continue editing' }).click();
+    await expect(name).toHaveValue('Unsaved entry');
+    if (kind === 'customer') {
+      await page.screenshot({ path: 'test-results/customer-form-actions.png' });
+      await page.getByRole('button', { name: other, exact: true }).click();
+      await page.evaluate(() => window.mediPharm.logout());
+      await login(page);
+      await expect(dialog).toHaveCount(0);
+      await expect(name).toHaveValue('Unsaved entry');
+    }
+    await page.getByRole('button', { name: 'Clear', exact: true }).click();
+    await expect(name).toHaveValue('');
+    await expect(secondary).toHaveValue('');
+    if (kind === 'medicine')
+      await expect(page.getByLabel('Form', { exact: true })).toHaveValue('tablet');
+    await name.fill('Saved entry');
+    await secondary.fill(kind === 'customer' ? '9876543210' : '10 mg');
+    await page.getByRole('button', { name: `Save ${kind}`, exact: true }).click();
+    await expect(page.locator('.record-row')).toContainText('Saved entry');
+    await page.getByRole('button', { name: `Edit ${kind}`, exact: true }).click();
+    await name.fill('Changed entry');
+    await secondary.fill(kind === 'customer' ? '9123456789' : '20 mg');
+    await page.getByLabel('Archived — retain history and exclude from new purchases').check();
+    await page.getByRole('button', { name: 'Clear', exact: true }).click();
+    await expect(name).toHaveValue('Saved entry');
+    await expect(secondary).toHaveValue(kind === 'customer' ? '9876543210' : '10 mg');
+    await expect(
+      page.getByLabel('Archived — retain history and exclude from new purchases'),
+    ).not.toBeChecked();
+    await name.fill('Discard these edits');
+    await page.getByRole('button', { name: 'Discard draft', exact: true }).click();
+    await expect(page.locator('.record-row')).toContainText('Saved entry');
+    await page.getByRole('button', { name: `Add ${kind}`, exact: true }).click();
+    await name.fill('Do not save this');
+    await page.getByRole('button', { name: other, exact: true }).click();
+    await dialog.getByRole('button', { name: 'Discard and switch' }).click();
+    await expect(page.getByRole('heading', { name: other, exact: true })).toBeVisible();
+    await page.getByRole('button', { name: section, exact: true }).click();
+    await expect(page.locator('.record-row')).toHaveCount(1);
+    await expect(page.locator('.business-editor')).toHaveCount(0);
+  });
+}
+
+test('inline clear and discard retain the purchase, while confirmed shortcut navigation discards the whole draft', async () => {
+  const page = await launch();
+  await setup(page);
+  await page.getByRole('button', { name: 'Purchases', exact: true }).click();
+  await page.getByRole('button', { name: 'New purchase', exact: true }).click();
+  await page.getByLabel('Purchase notes').fill('Keep the parent purchase');
+  await page.getByRole('button', { name: 'Add customer here' }).click();
+  await page.getByLabel('Customer name', { exact: true }).fill('Inline draft');
+  await page.getByRole('button', { name: 'Clear', exact: true }).click();
+  await expect(page.getByLabel('Customer name', { exact: true })).toHaveValue('');
+  await page.getByRole('button', { name: 'Discard inline changes', exact: true }).click();
+  await expect(page.getByLabel('Purchase notes')).toHaveValue('Keep the parent purchase');
+  await page.getByRole('button', { name: 'Add medicine here' }).click();
+  await page.getByLabel('Medicine name', { exact: true }).fill('Inline medicine draft');
+  await page.getByRole('button', { name: 'Register customer', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Discard unsaved draft?' });
+  await dialog.getByRole('button', { name: 'Continue editing' }).click();
+  await expect(page.getByLabel('Medicine name', { exact: true })).toHaveValue(
+    'Inline medicine draft',
+  );
+  await page.getByRole('button', { name: 'Register customer', exact: true }).click();
+  await dialog.getByRole('button', { name: 'Discard and switch' }).click();
+  await expect(page.getByLabel('Customer name', { exact: true })).toHaveValue('');
+  await page.getByRole('button', { name: 'Discard draft', exact: true }).click();
+  await page.getByRole('button', { name: 'Purchases', exact: true }).click();
+  await expect(page.locator('.business-editor')).toHaveCount(0);
+  expect(await page.evaluate(() => window.mediPharm.status())).toMatchObject({
+    ok: true,
+    data: { customers: 0, medicines: 0, purchases: 0 },
+  });
+});
+
+test('an uncertain save keeps the submitted form frozen instead of allowing navigation or clear', async () => {
+  const page = await launch();
+  await setup(page);
+  await page.getByRole('button', { name: 'Customers', exact: true }).click();
+  await page.getByRole('button', { name: 'Add customer', exact: true }).click();
+  await page.getByLabel('Customer name', { exact: true }).fill('Frozen submission');
+  await page.getByLabel('Phone', { exact: true }).fill('9876543210');
+  // Simulate an unknown response at the IPC boundary without weakening the app's API.
+  await app!.evaluate(({ ipcMain }) => {
+    ipcMain.removeHandler('desktop:business-save');
+    ipcMain.handle('desktop:business-save', () => ({
+      ok: false,
+      code: 'OUTCOME_UNKNOWN',
+      message: 'Test save outcome is unknown.',
+    }));
+  });
+  await page.getByRole('button', { name: 'Save customer', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Retry same submission' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Medicines', exact: true })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Clear', exact: true })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Discard draft', exact: true })).toBeDisabled();
+  await page.getByRole('button', { name: 'Lock workspace' }).click();
+  await login(page);
+  await expect(page.getByLabel('Customer name', { exact: true })).toHaveValue('Frozen submission');
+  await expect(page.getByRole('button', { name: 'Medicines', exact: true })).toBeDisabled();
 });

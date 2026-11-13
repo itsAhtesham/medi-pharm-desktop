@@ -13,7 +13,7 @@ The colour palette follows the workflow: customers use blue, medicines teal, pur
 - **Reports** is the former History view: purchase history, details, audit records and matching CSV export. All export types are also available in Settings.
 - **Settings** contains pharmacy details, owner password, CSV exports, encrypted backups and restore.
 
-Navigation and shortcuts are disabled while a business draft is open. Locking keeps that draft until sign-in. A restore clears drafts and pending navigation. The status bar reports lifecycle state and the last verified local backup, including pending external copies. An unconfigured or locked backup shortcut opens Settings; an unlocked shortcut creates a verified archive.
+Tabs and shortcuts remain available while a business draft is open. Switching away asks **Discard and switch** or **Continue editing**; Escape continues editing. Confirmed navigation discards the current editor and any unfinished parent purchase. Navigation remains blocked during a save or while its result is uncertain. Customer and medicine forms offer **Clear**, **Save** and **Discard** together: Clear restores new-record defaults or the values loaded for an existing record, and Discard closes the form (returning to the purchase when creating inline). Locking keeps that draft until sign-in. A restore clears drafts and pending navigation. The status bar reports lifecycle state and the last verified local backup, including pending external copies. An unconfigured or locked backup shortcut opens Settings; an unlocked shortcut creates a verified archive.
 
 ## Dashboard definitions
 

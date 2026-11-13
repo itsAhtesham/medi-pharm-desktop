@@ -93,6 +93,13 @@ Use the [interface guide](UI_DESIGN.md) for count definitions. On both Windows t
 - Start empty, create a customer and medicine through dashboard quick actions, and record a purchase. Confirm saved counts and the seven-day count chart. Cancel a purchase and confirm it disappears from active counts.
 - Create due and future reminders, including two medicines for one customer. Compare cycle counts with distinct customer counts. Check the customer link opens the correct supply report and View all opens the matching follow-up view.
 - Record a future-starting refill while current coverage ends within five days. Verify current coverage remains in Ending soon; closing a reminder must not remove its supply coverage.
-- Open a draft from a shortcut, lock/sign in, and confirm the draft survives. Other navigation must remain disabled until save/discard.
+- Open a draft from a shortcut, lock/sign in, and confirm the draft survives. Other tabs must remain clickable; choose Continue editing (or Escape) and verify all values remain, then choose Discard and switch and verify the requested tab opens without saving. A save in progress or uncertain save result must still block navigation.
 - Create a backup from the dashboard after configuration and verify the status bar timestamp. With backups locked/unconfigured, the same shortcut must open Settings. Rehearse external-copy pending status.
 - Verify the Reports tab still exposes purchase details/history and filtered CSV exports, and that keyboard entry works in the denser purchase form.
+
+- In both customer and medicine forms, verify Clear resets new fields/defaults, Save stores the record, and Discard returns to the list without saving. When editing, Clear restores the values loaded from the saved record. During inline creation, Clear affects only that form and Discard returns to the purchase with its notes retained. Check keyboard focus stays inside the navigation popup and defaults to Continue editing.
+
+
+## Updating the installed test build to 0.1.1
+
+Copy or pull the updated source on the Windows build machine, run `pnpm install --frozen-lockfile`, `pnpm check` and `pnpm make:windows`, and close the running app before testing the new installer. Use an encrypted backup of the disposable test pharmacy first. Keep the existing preview data directory; verify saved records and owner sign-in after installation. The installer filename stays `MediPharm-Preview-Setup.exe`; the application/package version is now 0.1.1. Confirm the new Clear / Save / Discard controls and navigation popup appear. Native installer upgrade behavior has not been verified from Linux.

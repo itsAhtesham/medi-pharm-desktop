@@ -8,6 +8,7 @@ import { ExportSettings } from './reports';
 
 import { sections, type Section, type NavigationIntent, type Navigate } from './navigation';
 import { Dashboard } from './dashboard';
+import { DraftNavigationDialog } from './draft-navigation-dialog';
 import { Icon, type IconName } from './icons';
 import type { BackupStatus } from '../contracts/backup';
 const sectionIcons: Record<Section, IconName> = {
@@ -291,6 +292,12 @@ function PasswordForm({ busy, run }: { busy: boolean; run: Run }) {
 
 function App() {
   const [businessDirty, setBusinessDirty] = useState(false);
+  const [businessBlocked, setBusinessBlocked] = useState(false);
+  const [navigationTarget, setNavigationTarget] = useState<{
+    section: Section;
+    action?: NavigationIntent['action'];
+    id?: string;
+  } | null>(null);
   const [businessReset, setBusinessReset] = useState(0);
   const [intent, setIntent] = useState<NavigationIntent | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -342,10 +349,12 @@ function App() {
     const accept = (next: Lifecycle) => {
       if (disposed || (lifecycleRef.current && next.revision <= lifecycleRef.current.revision))
         return;
+      if (next.state !== 'ready') setNavigationTarget(null);
       if (next.state === 'maintenance' && next.operation === 'restore') {
         setBusinessReset((value) => value + 1);
         setIntent(null);
         setBusinessDirty(false);
+        setBusinessBlocked(false);
         setDraft(null);
         setPending(null);
       }
@@ -420,11 +429,27 @@ function App() {
       return result;
     }, 'Pharmacy details saved on this computer.');
   }
-  const navigate: Navigate = (next, action, id) => {
-    if (!ready || busy || businessDirty) return;
+  const openSection: Navigate = (next, action, id) => {
     setSection(next);
     setIntent(action ? { key: crypto.randomUUID(), action, id } : null);
     setSidebarOpen(false);
+  };
+  const navigate: Navigate = (next, action, id) => {
+    if (!ready || busy || businessBlocked || (next === section && !action)) return;
+    if (businessDirty) {
+      setNavigationTarget({ section: next, action, id });
+      return;
+    }
+    openSection(next, action, id);
+  };
+  const discardAndNavigate = () => {
+    if (!navigationTarget || lifecycleRef.current?.state !== 'ready' || busy || businessBlocked)
+      return;
+    setBusinessReset((value) => value + 1);
+    setBusinessDirty(false);
+    setBusinessBlocked(false);
+    openSection(navigationTarget.section, navigationTarget.action, navigationTarget.id);
+    setNavigationTarget(null);
   };
   const createBackup = () => {
     if (!backup?.configured || !backup.unlocked) {
@@ -492,7 +517,7 @@ function App() {
           <button
             key={item}
             className={`section-${sectionIcons[item]}`}
-            disabled={!ready || busy || businessDirty}
+            disabled={!ready || busy || businessBlocked}
             aria-current={section === item ? 'page' : undefined}
             onClick={() => navigate(item)}
           >
@@ -516,7 +541,7 @@ function App() {
               )}
               <button
                 className={`section-${sectionIcons[item.section]}`}
-                disabled={!ready || busy || businessDirty}
+                disabled={!ready || busy || businessBlocked}
                 onClick={() => navigate(item.section, item.action)}
               >
                 <Icon name={item.icon} />
@@ -686,6 +711,7 @@ function App() {
                 enabled={lifecycle?.state === 'ready' && !busy}
                 epoch={lifecycle?.revision ?? 0}
                 onDirty={setBusinessDirty}
+                onBlocked={setBusinessBlocked}
                 onCommit={() => void refresh()}
               />
             </div>
@@ -708,6 +734,14 @@ function App() {
           </main>
         </div>
       </div>
+      {navigationTarget && lifecycle?.state === 'ready' && (
+        <DraftNavigationDialog
+          destination={navigationTarget.section}
+          disabled={busy || businessBlocked}
+          onContinue={() => setNavigationTarget(null)}
+          onDiscard={discardAndNavigate}
+        />
+      )}
       <div className="status-bar" aria-label="Storage status">
         <span>
           <span className="status-dot" />
