@@ -511,6 +511,19 @@ test('customer, medicine, purchase, contact, refill and cancellation work throug
   await page.getByRole('button', { name: 'View purchase #1', exact: true }).click();
   await expect(page.locator('.purchase-detail')).toContainText('1.25 tablets');
   await page.getByRole('button', { name: 'Correct purchase', exact: true }).click();
+  await page.getByLabel('Quantity', { exact: true }).fill('99');
+  await page.getByLabel('Days supplied', { exact: true }).fill('30');
+  await page.getByLabel('Purchase notes').fill('Unsaved correction');
+  await page.getByLabel('Correction reason').fill('Test reset');
+  await page.getByRole('button', { name: 'Refresh supply preview' }).click();
+  await expect(page.getByRole('button', { name: 'Save purchase', exact: true })).toBeEnabled();
+  await page.getByRole('button', { name: 'Clear', exact: true }).click();
+  await expect(page.getByLabel('Quantity', { exact: true })).toHaveValue('1.25');
+  await expect(page.getByLabel('Days supplied', { exact: true })).toHaveValue('1');
+  await expect(page.getByLabel('Purchase notes')).toHaveValue('First desktop supply');
+  await expect(page.getByLabel('Correction reason')).toHaveValue('');
+  await expect(page.locator('.supply-estimate')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Save purchase', exact: true })).toBeDisabled();
   await page.getByLabel('Purchase notes').fill('Corrected supply note');
   await page.getByLabel('Correction reason').fill('Clarify the note');
   await page.getByRole('button', { name: 'Refresh supply preview' }).click();
@@ -534,6 +547,12 @@ test('customer, medicine, purchase, contact, refill and cancellation work throug
   await page.getByLabel('Follow-up view').selectOption('scheduled');
   await expect(page.locator('.follow-row')).toContainText('Awaiting refill');
   await page.getByRole('button', { name: 'Record refill', exact: true }).click();
+  await page.getByLabel('Days supplied', { exact: true }).fill('21');
+  await page.getByLabel('Refill choice', { exact: true }).selectOption('replace');
+  await page.getByRole('button', { name: 'Clear', exact: true }).click();
+  await expect(page.getByLabel('Days supplied', { exact: true })).toHaveValue('');
+  await expect(page.getByLabel('Refill choice', { exact: true })).toHaveValue('');
+  await expect(page.locator('.business-editor')).toContainText('Customer: Asha Rao');
   await page.getByLabel('Days supplied', { exact: true }).fill('3');
   await page.getByLabel('Refill choice', { exact: true }).selectOption('extend');
   await page.getByLabel('Enable reminder for Test medicine 10 mg tablet').check();
@@ -1115,4 +1134,57 @@ test('purchase fields stay independent without numbered labels and date fields o
   await page.getByRole('button', { name: 'View purchase #1', exact: true }).click();
   await expect(page.locator('.purchase-detail')).toContainText('2 tablets');
   await expect(page.locator('.purchase-detail')).toContainText('3.5 strips');
+});
+
+test('purchase clear resets the draft and preview, discard leaves records intact, and uncertain saves freeze all actions', async () => {
+  const page = await launch();
+  await setup(page);
+  await page.getByRole('button', { name: 'Enter purchase', exact: true }).click();
+  await page.getByRole('button', { name: 'Add customer here' }).click();
+  await page.getByLabel('Customer name', { exact: true }).fill('Reset Customer');
+  await page.getByLabel('Phone', { exact: true }).fill('9876543210');
+  await page.getByRole('button', { name: 'Save customer', exact: true }).click();
+  await page.getByRole('button', { name: 'Add medicine here' }).click();
+  await page.getByLabel('Medicine name', { exact: true }).fill('Reset Medicine');
+  await page.getByRole('button', { name: 'Save medicine', exact: true }).click();
+  const today = await page.getByLabel('Purchase date', { exact: true }).inputValue();
+  await page.getByLabel('Purchase date', { exact: true }).fill('2026-01-01');
+  await page.getByLabel('Days supplied', { exact: true }).fill('7');
+  await page.getByLabel('Purchase notes').fill('Discard these notes');
+  await page.getByRole('button', { name: 'Refresh supply preview' }).click();
+  const save = page.getByRole('button', { name: 'Save purchase', exact: true });
+  await expect(save).toBeEnabled();
+  await expect(page.locator('.form-actions button')).toHaveText(['Clear', 'Save', 'Discard']);
+  await page.getByRole('button', { name: 'Clear', exact: true }).click();
+  await expect(page.locator('.business-editor')).toContainText('Customer: Choose a customer');
+  await expect(page.getByLabel('Purchase date', { exact: true })).toHaveValue(today);
+  await expect(page.getByLabel('Purchase notes')).toHaveValue('');
+  await expect(page.locator('.quantity-row')).toHaveCount(0);
+  await expect(page.locator('.supply-card')).toHaveCount(0);
+  await expect(save).toBeDisabled();
+  await page.getByRole('button', { name: 'Discard draft', exact: true }).click();
+  await expect(page.locator('.business-editor')).toHaveCount(0);
+  expect(await page.evaluate(() => window.mediPharm.status())).toMatchObject({
+    ok: true,
+    data: { customers: 1, medicines: 1, purchases: 0 },
+  });
+  await page.getByRole('button', { name: 'New purchase', exact: true }).click();
+  await page.getByRole('button', { name: 'Reset Customer · 9876543210', exact: true }).click();
+  await page.getByRole('button', { name: 'Reset Medicine · tablet', exact: true }).click();
+  await page.getByLabel('Days supplied', { exact: true }).fill('7');
+  await page.getByRole('button', { name: 'Refresh supply preview' }).click();
+  await app!.evaluate(({ ipcMain }) => {
+    ipcMain.removeHandler('desktop:business-save');
+    ipcMain.handle('desktop:business-save', () => ({
+      ok: false,
+      code: 'OUTCOME_UNKNOWN',
+      message: 'Test purchase outcome is unknown.',
+    }));
+  });
+  await save.click();
+  await expect(page.getByRole('button', { name: 'Retry same submission' })).toBeVisible();
+  for (const name of ['Clear', 'Save purchase', 'Discard draft', 'Refresh supply preview']) {
+    await expect(page.getByRole('button', { name, exact: true })).toBeDisabled();
+  }
+  await expect(page.getByLabel('Days supplied', { exact: true })).toHaveValue('7');
 });

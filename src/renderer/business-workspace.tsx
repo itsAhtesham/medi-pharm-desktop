@@ -180,6 +180,7 @@ export function BusinessWorkspace({
   const [tick, setTick] = useState(0);
   const [editor, setEditor] = useState<Editor | null>(null);
   const catalogBaseline = useRef<CatalogDraft | null>(null);
+  const purchaseBaseline = useRef<PurchaseDraft | null>(null);
   const [parent, setParent] = useState<PurchaseDraft | null>(null);
   const [pending, setPending] = useState<BusinessMutation | null>(null);
   const [preview, setPreview] = useState<Preview | null>(null);
@@ -232,7 +233,11 @@ export function BusinessWorkspace({
       catalogBaseline.current = value;
       setEditor({ type: 'catalog', inline: false, value });
     }
-    if (intent.action === 'newPurchase') setEditor({ type: 'purchase', value: freshPurchase() });
+    if (intent.action === 'newPurchase') {
+      const value = freshPurchase();
+      purchaseBaseline.current = value;
+      setEditor({ type: 'purchase', value });
+    }
     if (intent.action === 'due' || intent.action === 'scheduled' || intent.action === 'all')
       setTab(intent.action);
     if (intent.action === 'supplies' && intent.id) setSupplyCustomer(intent.id);
@@ -276,6 +281,7 @@ export function BusinessWorkspace({
   }, []);
   const begin = (e: Editor) => {
     if (e.type === 'catalog') catalogBaseline.current = e.value;
+    if (e.type === 'purchase') purchaseBaseline.current = e.value;
     setEditor(e);
     setError('');
     setMessage('');
@@ -844,15 +850,31 @@ export function BusinessWorkspace({
                 </p>
                 <p className="field-help">
                   First, click <strong>Refresh supply preview</strong> and review the supply and
-                  reminder dates. Then click <strong>Save purchase</strong>. If you change any
-                  details, refresh the preview again before saving.
+                  reminder dates. Then click <strong>Save</strong>. If you change any details,
+                  refresh the preview again before saving.
                 </p>
                 <div className="business-actions">
                   <button className="secondary" onClick={() => void previewPurchase(purchase)}>
                     Refresh supply preview
                   </button>
+                </div>
+                <div className="business-actions form-actions">
+                  <button
+                    className="secondary"
+                    type="button"
+                    onClick={() => {
+                      if (!purchaseBaseline.current) return;
+                      changePurchase(purchaseBaseline.current);
+                      setError('');
+                      setMessage('');
+                    }}
+                  >
+                    Clear
+                  </button>
                   <button
                     className="primary"
+                    type="button"
+                    aria-label="Save purchase"
                     disabled={!preview}
                     onClick={() =>
                       preview &&
@@ -864,7 +886,15 @@ export function BusinessWorkspace({
                       })
                     }
                   >
-                    Save purchase
+                    Save
+                  </button>
+                  <button
+                    className="secondary"
+                    type="button"
+                    aria-label="Discard draft"
+                    onClick={discardEditor}
+                  >
+                    Discard
                   </button>
                 </div>
               </>
@@ -968,7 +998,7 @@ export function BusinessWorkspace({
                 </button>
               </form>
             )}
-            {!catalog && (
+            {!catalog && !purchase && (
               <button className="text-button" type="button" onClick={discardEditor}>
                 Discard {parent ? 'inline changes' : 'draft'}
               </button>

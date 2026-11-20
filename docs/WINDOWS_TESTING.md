@@ -97,7 +97,7 @@ Use the [interface guide](UI_DESIGN.md) for count definitions. On both Windows t
 - Create a backup from the dashboard after configuration and verify the status bar timestamp. With backups locked/unconfigured, the same shortcut must open Settings. Rehearse external-copy pending status.
 - Verify the Reports tab still exposes purchase details/history and filtered CSV exports, and that keyboard entry works in the denser purchase form.
 
-- In both customer and medicine forms, verify Clear resets new fields/defaults, Save stores the record, and Discard returns to the list without saving. When editing, Clear restores the values loaded from the saved record. During inline creation, Clear affects only that form and Discard returns to the purchase with its notes retained. Check keyboard focus stays inside the navigation popup and defaults to Continue editing.
+- In customer, medicine and purchase forms, verify Clear resets new fields/defaults, Save stores the record, and Discard returns to the list without saving. When editing, Clear restores the values loaded from the saved record. During inline creation, Clear affects only that form and Discard returns to the purchase with its notes retained. For a purchase, verify Clear also removes the preview and disables Save until a new preview succeeds; a refill retains its preselected customer/medicine and a correction restores its original saved values. Discard must not remove customer/medicine records already saved inline. Check keyboard focus stays inside the navigation popup and defaults to Continue editing.
 
 
 ## Updating the installed test build to 0.1.2
