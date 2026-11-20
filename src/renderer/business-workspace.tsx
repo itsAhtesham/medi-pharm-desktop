@@ -842,6 +842,11 @@ export function BusinessWorkspace({
                   Corrections recalculate later refills. The previous details remain in audit
                   history.
                 </p>
+                <p className="field-help">
+                  First, click <strong>Refresh supply preview</strong> and review the supply and
+                  reminder dates. Then click <strong>Save purchase</strong>. If you change any
+                  details, refresh the preview again before saving.
+                </p>
                 <div className="business-actions">
                   <button className="secondary" onClick={() => void previewPurchase(purchase)}>
                     Refresh supply preview
