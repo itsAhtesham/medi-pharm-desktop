@@ -100,6 +100,13 @@ Use the [interface guide](UI_DESIGN.md) for count definitions. On both Windows t
 - In customer, medicine and purchase forms, verify Clear resets new fields/defaults, Save stores the record, and Discard returns to the list without saving. When editing, Clear restores the values loaded from the saved record. During inline creation, Clear affects only that form and Discard returns to the purchase with its notes retained. For a purchase, verify Clear also removes the preview and disables Save until a new preview succeeds; a refill retains its preselected customer/medicine and a correction restores its original saved values. Discard must not remove customer/medicine records already saved inline. Check keyboard focus stays inside the navigation popup and defaults to Continue editing.
 
 
+## Back navigation checks
+
+- From customer, medicine and purchase forms, click Back near the heading. Continue editing and Escape must preserve the draft; Discard and leave must return without saving. From inline creation, Back must retain the parent purchase. From correction/cancellation, Back must return to the original purchase details.
+- Search the customer/medicine list, select a status and move to another page. Open an editor and return with Back; verify search, status, page and records remain. Repeat from a filtered purchase list and follow-up tab.
+- Open purchase details from purchase history or current supplies. Back must name and return to that origin; current-medicine search and history pagination must survive a correction and return. Verify keyboard focus returns to the destination.
+- Lock while the Back popup is open, sign in and verify the popup is dismissed while the draft remains. Back must remain disabled during a save or an uncertain save result.
+
 ## Updating the installed test build to 0.1.2
 
 Copy or pull the updated source on the Windows build machine, run `pnpm install --frozen-lockfile`, `pnpm check` and `pnpm make:windows`, and close the running app before testing the new installer. Use an encrypted backup of the disposable test pharmacy first. Keep the existing preview data directory; verify saved records and owner sign-in after installation. The installer filename stays `MediPharm-Preview-Setup.exe`; the application/package version is now 0.1.2. Confirm the Clear / Save / Discard controls and navigation popup appear, purchase field labels have no row numbers, and the refill dropdown offers only Extend and Replace as selectable choices. Click the text, empty middle and calendar icon of purchase, supply-start, manual-reminder and next-contact dates: each should open the calendar. Check keyboard date entry, Escape dismissal and date limits too. Native installer upgrade behavior has not been verified from Linux.

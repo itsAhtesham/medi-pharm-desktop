@@ -1,4 +1,6 @@
 import { DateInput } from './date-input';
+import { BackButton } from './back-button';
+import { DraftNavigationDialog } from './draft-navigation-dialog';
 import type { NavigationIntent } from './navigation';
 import { CsvButton, CustomerSupplies } from './reports';
 import React, { useEffect, useRef, useState, useId } from 'react';
@@ -179,6 +181,8 @@ export function BusinessWorkspace({
   const [working, setWorking] = useState(false);
   const [tick, setTick] = useState(0);
   const [editor, setEditor] = useState<Editor | null>(null);
+  const [backRequested, setBackRequested] = useState(false);
+  const workspace = useRef<HTMLDivElement>(null);
   const catalogBaseline = useRef<CatalogDraft | null>(null);
   const purchaseBaseline = useRef<PurchaseDraft | null>(null);
   const [parent, setParent] = useState<PurchaseDraft | null>(null);
@@ -186,6 +190,7 @@ export function BusinessWorkspace({
   const [preview, setPreview] = useState<Preview | null>(null);
   const [labels, setLabels] = useState<Record<string, string>>({});
   const [detail, setDetail] = useState<Purchase | null>(null);
+  const [detailOrigin, setDetailOrigin] = useState<'list' | 'history' | 'supplies'>('list');
   const [historyFilter, setHistoryFilter] = useState<{
     customerId?: string;
     medicineId?: string;
@@ -208,6 +213,9 @@ export function BusinessWorkspace({
               : 'purchases'
             : 'followups';
   const dirty = editor !== null || pending !== null;
+  useEffect(() => {
+    setBackRequested(false);
+  }, [enabled, active, epoch]);
   useEffect(() => onDirty(dirty), [dirty, onDirty]);
   useEffect(() => onBlocked(working || pending !== null), [working, pending, onBlocked]);
   useEffect(() => {
@@ -436,8 +444,52 @@ export function BusinessWorkspace({
   const blocked = !enabled || working || Boolean(pending);
   const catalog = editor?.type === 'catalog' ? editor.value : null;
   const purchase = editor?.type === 'purchase' ? editor.value : null;
+  const listDestination = section.toLowerCase();
+  const editorReturnsToDetail = detail && (editor?.type === 'cancel' || Boolean(purchase?.id));
+  const editorDestination = parent
+    ? 'purchase'
+    : editorReturnsToDetail
+      ? `purchase #${detail.sequence}`
+      : listDestination;
+  const detailDestination =
+    detailOrigin === 'supplies'
+      ? 'current supplies'
+      : detailOrigin === 'history'
+        ? 'purchase history'
+        : listDestination;
+  function focusView(selector: string) {
+    requestAnimationFrame(() => {
+      workspace.current?.querySelector<HTMLElement>(selector)?.focus();
+    });
+  }
+  function openDetail(value: Purchase | null, origin: typeof detailOrigin) {
+    setDetailOrigin(origin);
+    setDetail(value);
+    if (value) focusView('.purchase-detail h2');
+  }
   return (
-    <div className="business-workspace">
+    <div className="business-workspace" ref={workspace}>
+      {backRequested && editor && active && enabled && (
+        <DraftNavigationDialog
+          destination={editorDestination}
+          discardParent={false}
+          discardLabel="Discard and leave"
+          disabled={blocked}
+          onContinue={() => setBackRequested(false)}
+          onDiscard={() => {
+            if (blocked) return;
+            setBackRequested(false);
+            discardEditor();
+            focusView(
+              parent
+                ? '.business-editor h2'
+                : editorReturnsToDetail
+                  ? '.purchase-detail h2'
+                  : '.business-toolbar input',
+            );
+          }}
+        />
+      )}
       {error && (
         <p role="alert" className="feedback error">
           {error}
@@ -463,9 +515,14 @@ export function BusinessWorkspace({
           </button>
         </section>
       )}
-      {editor ? (
+      {editor && (
         <section className="card business-editor">
-          <h2>
+          <BackButton
+            destination={editorDestination}
+            disabled={blocked}
+            onClick={() => setBackRequested(true)}
+          />
+          <h2 tabIndex={-1}>
             {catalog
               ? `${catalog.id ? 'Edit' : 'Add'} ${catalog.kind}`
               : purchase
@@ -1005,445 +1062,466 @@ export function BusinessWorkspace({
             )}
           </fieldset>
         </section>
-      ) : (
-        <>
-          <div className="business-toolbar">
-            <Field label={`Search ${kind === 'followups' ? 'customers' : kind}`}>
-              <input
-                maxLength={120}
-                value={search}
-                onChange={(e) => {
-                  setSearch(e.target.value);
-                  setPage(0);
-                }}
-                placeholder="Search saved records"
-              />
-            </Field>
-            {(kind === 'customers' || kind === 'medicines') && (
-              <>
-                <Field label="Record status">
-                  <select
-                    value={archived ? 'archived' : 'active'}
-                    onChange={(e) => {
-                      setArchived(e.target.value === 'archived');
-                      setPage(0);
-                    }}
-                  >
-                    <option value="active">Active</option>
-                    <option value="archived">Archived</option>
-                  </select>
-                </Field>
-                <button
-                  className="primary"
-                  disabled={!enabled}
-                  onClick={() =>
-                    begin({
-                      type: 'catalog',
-                      value: freshCatalog(kind === 'customers' ? 'customer' : 'medicine'),
-                      inline: false,
-                    })
-                  }
-                >
-                  Add {kind === 'customers' ? 'customer' : 'medicine'}
-                </button>
-              </>
-            )}
-            {section === 'Purchases' && (
-              <button
-                className="primary"
-                disabled={!enabled}
-                onClick={() => begin({ type: 'purchase', value: freshPurchase() })}
-              >
-                New purchase
-              </button>
-            )}
-            {kind === 'followups' && (
-              <Field label="Follow-up view">
+      )}
+      <div hidden={Boolean(editor)}>
+        <div className="business-toolbar">
+          <Field label={`Search ${kind === 'followups' ? 'customers' : kind}`}>
+            <input
+              maxLength={120}
+              value={search}
+              onChange={(e) => {
+                setSearch(e.target.value);
+                setPage(0);
+              }}
+              placeholder="Search saved records"
+            />
+          </Field>
+          {(kind === 'customers' || kind === 'medicines') && (
+            <>
+              <Field label="Record status">
                 <select
-                  value={tab}
+                  value={archived ? 'archived' : 'active'}
                   onChange={(e) => {
-                    setTab(e.target.value as typeof tab);
+                    setArchived(e.target.value === 'archived');
                     setPage(0);
                   }}
                 >
-                  <option value="due">Due and overdue</option>
-                  <option value="scheduled">Scheduled</option>
-                  <option value="closed">Closed / superseded</option>
-                  <option value="all">All cycles</option>
+                  <option value="active">Active</option>
+                  <option value="archived">Archived</option>
                 </select>
               </Field>
-            )}
-            <button className="secondary" disabled={!enabled} onClick={() => setTick((t) => t + 1)}>
-              Refresh records
-            </button>
-          </div>
-          {(kind === 'customers' ||
-            kind === 'medicines' ||
-            kind === 'purchases' ||
-            kind === 'followups') && (
-            <div className="report-exports">
-              <p className="field-help">
-                Export includes all matching records across pages. CSV files are not encrypted.
-              </p>
-              <div className="business-actions">
-                <CsvButton
-                  disabled={!enabled}
-                  selection={
-                    kind === 'customers' || kind === 'medicines'
-                      ? { kind, search, status: archived ? 'archived' : 'active' }
-                      : kind === 'purchases'
-                        ? {
-                            kind,
-                            search,
-                            customerId: historyFilter?.customerId,
-                            medicineId: historyFilter?.medicineId,
-                          }
-                        : { kind, search, tab }
-                  }
-                />
-                {kind === 'followups' && (
-                  <CsvButton
-                    disabled={!enabled}
-                    selection={{ kind: 'followupHistory', search, tab }}
-                    label="Export matching follow-up history"
-                  />
-                )}
-              </div>
-            </div>
-          )}
-          {supplyCustomer && (
-            <CustomerSupplies
-              key={supplyCustomer}
-              customerId={supplyCustomer}
-              enabled={enabled && active}
-              revision={data?.revision ?? 0}
-              onClose={() => setSupplyCustomer(null)}
-              onPurchase={(id) => {
-                const generation = epoch;
-                void window.mediPharm.businessQuery({ kind: 'purchases', id }).then((r) => {
-                  if (epochRef.current !== generation) return;
-                  if (r.ok) setDetail(r.data.purchases[0] ?? null);
-                  else setError(r.message);
-                });
-              }}
-            />
-          )}
-          {historyFilter && (
-            <p>
-              History for {historyFilter.label}{' '}
               <button
-                className="text-button"
-                onClick={() => {
-                  setHistoryFilter(null);
+                className="primary"
+                disabled={!enabled}
+                onClick={() =>
+                  begin({
+                    type: 'catalog',
+                    value: freshCatalog(kind === 'customers' ? 'customer' : 'medicine'),
+                    inline: false,
+                  })
+                }
+              >
+                Add {kind === 'customers' ? 'customer' : 'medicine'}
+              </button>
+            </>
+          )}
+          {section === 'Purchases' && (
+            <button
+              className="primary"
+              disabled={!enabled}
+              onClick={() => begin({ type: 'purchase', value: freshPurchase() })}
+            >
+              New purchase
+            </button>
+          )}
+          {kind === 'followups' && (
+            <Field label="Follow-up view">
+              <select
+                value={tab}
+                onChange={(e) => {
+                  setTab(e.target.value as typeof tab);
                   setPage(0);
                 }}
               >
-                Clear history filter
-              </button>
-            </p>
+                <option value="due">Due and overdue</option>
+                <option value="scheduled">Scheduled</option>
+                <option value="closed">Closed / superseded</option>
+                <option value="all">All cycles</option>
+              </select>
+            </Field>
           )}
-          {!data ? (
-            <p>Loading records…</p>
-          ) : (
-            <>
-              {(kind === 'customers' || kind === 'medicines') && (
-                <div className="table-scroll panel">
-                  <table className="catalog-table">
-                    <thead>
-                      <tr>
-                        <th>{kind === 'customers' ? 'Customer' : 'Medicine'}</th>
-                        <th>{kind === 'customers' ? 'Phone / age' : 'Strength / form'}</th>
-                        <th>Status</th>
-                        <th>Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {data[kind].map((row) => (
-                        <React.Fragment key={row.id}>
-                          <tr className="record-row">
-                            <td>
-                              <strong>{row.name}</strong>
-                              {'notes' in row && row.notes && (
-                                <small className="cell-detail">{row.notes}</small>
-                              )}
-                            </td>
-                            <td>
-                              {'phone' in row ? (
-                                <p>
-                                  {row.phone} ·{' '}
-                                  {row.age === null ? 'Age not recorded' : `Age ${row.age}`}
-                                </p>
-                              ) : (
-                                <p>
-                                  {row.strength} · {row.form}
-                                </p>
-                              )}
-                            </td>
-                            <td>
-                              <span className={`status-chip ${row.archived_at ? '' : 'info'}`}>
-                                {row.archived_at ? 'Archived' : 'Active'}
-                              </span>
-                            </td>
-                            <td>
-                              <div className="business-actions">
+          <button className="secondary" disabled={!enabled} onClick={() => setTick((t) => t + 1)}>
+            Refresh records
+          </button>
+        </div>
+        {(kind === 'customers' ||
+          kind === 'medicines' ||
+          kind === 'purchases' ||
+          kind === 'followups') && (
+          <div className="report-exports">
+            <p className="field-help">
+              Export includes all matching records across pages. CSV files are not encrypted.
+            </p>
+            <div className="business-actions">
+              <CsvButton
+                disabled={!enabled}
+                selection={
+                  kind === 'customers' || kind === 'medicines'
+                    ? { kind, search, status: archived ? 'archived' : 'active' }
+                    : kind === 'purchases'
+                      ? {
+                          kind,
+                          search,
+                          customerId: historyFilter?.customerId,
+                          medicineId: historyFilter?.medicineId,
+                        }
+                      : { kind, search, tab }
+                }
+              />
+              {kind === 'followups' && (
+                <CsvButton
+                  disabled={!enabled}
+                  selection={{ kind: 'followupHistory', search, tab }}
+                  label="Export matching follow-up history"
+                />
+              )}
+            </div>
+          </div>
+        )}
+        {supplyCustomer && (
+          <CustomerSupplies
+            key={supplyCustomer}
+            customerId={supplyCustomer}
+            enabled={enabled && active}
+            revision={data?.revision ?? 0}
+            onClose={() => {
+              setSupplyCustomer(null);
+              if (detailOrigin === 'supplies') setDetail(null);
+              focusView('.business-toolbar input');
+            }}
+            onPurchase={(id) => {
+              const generation = epoch;
+              void window.mediPharm.businessQuery({ kind: 'purchases', id }).then((r) => {
+                if (epochRef.current !== generation) return;
+                if (r.ok) openDetail(r.data.purchases[0] ?? null, 'supplies');
+                else setError(r.message);
+              });
+            }}
+          />
+        )}
+        {historyFilter && (
+          <p>
+            History for {historyFilter.label}{' '}
+            <BackButton
+              destination={listDestination}
+              onClick={() => {
+                setHistoryFilter(null);
+                if (detailOrigin === 'history') setDetail(null);
+                focusView('.business-toolbar input');
+              }}
+            />
+          </p>
+        )}
+        {!data ? (
+          <p>Loading records…</p>
+        ) : (
+          <>
+            {(kind === 'customers' || kind === 'medicines') && (
+              <div className="table-scroll panel">
+                <table className="catalog-table">
+                  <thead>
+                    <tr>
+                      <th>{kind === 'customers' ? 'Customer' : 'Medicine'}</th>
+                      <th>{kind === 'customers' ? 'Phone / age' : 'Strength / form'}</th>
+                      <th>Status</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data[kind].map((row) => (
+                      <React.Fragment key={row.id}>
+                        <tr className="record-row">
+                          <td>
+                            <strong>{row.name}</strong>
+                            {'notes' in row && row.notes && (
+                              <small className="cell-detail">{row.notes}</small>
+                            )}
+                          </td>
+                          <td>
+                            {'phone' in row ? (
+                              <p>
+                                {row.phone} ·{' '}
+                                {row.age === null ? 'Age not recorded' : `Age ${row.age}`}
+                              </p>
+                            ) : (
+                              <p>
+                                {row.strength} · {row.form}
+                              </p>
+                            )}
+                          </td>
+                          <td>
+                            <span className={`status-chip ${row.archived_at ? '' : 'info'}`}>
+                              {row.archived_at ? 'Archived' : 'Active'}
+                            </span>
+                          </td>
+                          <td>
+                            <div className="business-actions">
+                              <button
+                                className="secondary"
+                                disabled={!enabled}
+                                onClick={() =>
+                                  begin({
+                                    type: 'catalog',
+                                    inline: false,
+                                    value:
+                                      'phone' in row
+                                        ? {
+                                            kind: 'customer',
+                                            requestId: crypto.randomUUID(),
+                                            id: row.id,
+                                            expectedVersion: row.version,
+                                            name: row.name,
+                                            phone: row.phone,
+                                            age: row.age,
+                                            notes: row.notes,
+                                            archived: row.archived_at !== null,
+                                          }
+                                        : {
+                                            kind: 'medicine',
+                                            requestId: crypto.randomUUID(),
+                                            id: row.id,
+                                            expectedVersion: row.version,
+                                            name: row.name,
+                                            strength: row.strength,
+                                            form: row.form,
+                                            archived: row.archived_at !== null,
+                                          },
+                                  })
+                                }
+                              >
+                                Edit {kind === 'customers' ? 'customer' : 'medicine'}
+                              </button>
+                              <button
+                                className="text-button"
+                                onClick={() => {
+                                  setHistoryFilter({
+                                    ...('phone' in row
+                                      ? { customerId: row.id }
+                                      : { medicineId: row.id }),
+                                    label: row.name,
+                                  });
+                                  setDetail(null);
+                                }}
+                              >
+                                View purchases
+                              </button>
+                              {'phone' in row && (
                                 <button
                                   className="secondary"
                                   disabled={!enabled}
-                                  onClick={() =>
-                                    begin({
-                                      type: 'catalog',
-                                      inline: false,
-                                      value:
-                                        'phone' in row
-                                          ? {
-                                              kind: 'customer',
-                                              requestId: crypto.randomUUID(),
-                                              id: row.id,
-                                              expectedVersion: row.version,
-                                              name: row.name,
-                                              phone: row.phone,
-                                              age: row.age,
-                                              notes: row.notes,
-                                              archived: row.archived_at !== null,
-                                            }
-                                          : {
-                                              kind: 'medicine',
-                                              requestId: crypto.randomUUID(),
-                                              id: row.id,
-                                              expectedVersion: row.version,
-                                              name: row.name,
-                                              strength: row.strength,
-                                              form: row.form,
-                                              archived: row.archived_at !== null,
-                                            },
-                                    })
-                                  }
-                                >
-                                  Edit {kind === 'customers' ? 'customer' : 'medicine'}
-                                </button>
-                                <button
-                                  className="text-button"
                                   onClick={() => {
-                                    setHistoryFilter({
-                                      ...('phone' in row
-                                        ? { customerId: row.id }
-                                        : { medicineId: row.id }),
-                                      label: row.name,
-                                    });
+                                    setSupplyCustomer(row.id);
                                     setDetail(null);
                                   }}
                                 >
-                                  View purchases
+                                  View current supplies
                                 </button>
-                                {'phone' in row && (
-                                  <button
-                                    className="secondary"
-                                    disabled={!enabled}
-                                    onClick={() => {
-                                      setSupplyCustomer(row.id);
-                                      setDetail(null);
-                                    }}
-                                  >
-                                    View current supplies
-                                  </button>
-                                )}
-                              </div>
-                            </td>
-                          </tr>
-                          {historyFilter &&
-                            (historyFilter.customerId === row.id ||
-                              historyFilter.medicineId === row.id) && (
-                              <tr>
-                                <td colSpan={4}>
-                                  <RelatedPurchases filter={historyFilter} onSelect={setDetail} />
-                                </td>
-                              </tr>
-                            )}
-                        </React.Fragment>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-              {kind === 'purchases' && (
-                <PurchaseList purchases={data.purchases} onSelect={setDetail} />
-              )}
-              {kind === 'followups' && (
-                <div className="record-list">
-                  {[...new Set(data.followups.map((f) => f.customer_id))].map((id) => {
-                    const rows = data.followups.filter((f) => f.customer_id === id);
-                    return (
-                      <section className="card" key={id}>
-                        <h2>{rows[0].customer_name}</h2>
-                        <p>{rows[0].phone}</p>
-                        {rows.map((f) => (
-                          <article className="follow-row" key={f.id}>
-                            <div>
-                              <strong>{f.medicine_name}</strong>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                        {historyFilter &&
+                          (historyFilter.customerId === row.id ||
+                            historyFilter.medicineId === row.id) && (
+                            <tr>
+                              <td colSpan={4}>
+                                <RelatedPurchases
+                                  filter={historyFilter}
+                                  onSelect={(p) => openDetail(p, 'history')}
+                                />
+                              </td>
+                            </tr>
+                          )}
+                      </React.Fragment>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            {kind === 'purchases' && (
+              <PurchaseList purchases={data.purchases} onSelect={(p) => openDetail(p, 'list')} />
+            )}
+            {kind === 'followups' && (
+              <div className="record-list">
+                {[...new Set(data.followups.map((f) => f.customer_id))].map((id) => {
+                  const rows = data.followups.filter((f) => f.customer_id === id);
+                  return (
+                    <section className="card" key={id}>
+                      <h2>{rows[0].customer_name}</h2>
+                      <p>{rows[0].phone}</p>
+                      {rows.map((f) => (
+                        <article className="follow-row" key={f.id}>
+                          <div>
+                            <strong>{f.medicine_name}</strong>
+                            <p>
+                              {f.status === 'open'
+                                ? f.next_date < data.today
+                                  ? 'Overdue'
+                                  : f.next_date === data.today
+                                    ? 'Due today'
+                                    : 'Scheduled'
+                                : f.status}{' '}
+                              · {f.next_date} · Run-out {f.run_out_date}
+                            </p>
+                            {f.last_contact_at && (
                               <p>
+                                Contacted {new Date(f.last_contact_at).toLocaleString()} ·{' '}
                                 {f.status === 'open'
-                                  ? f.next_date < data.today
-                                    ? 'Overdue'
-                                    : f.next_date === data.today
-                                      ? 'Due today'
-                                      : 'Scheduled'
-                                  : f.status}{' '}
-                                · {f.next_date} · Run-out {f.run_out_date}
+                                  ? f.next_date <= data.today
+                                    ? 'Follow up again'
+                                    : 'Awaiting refill'
+                                  : ''}
                               </p>
-                              {f.last_contact_at && (
-                                <p>
-                                  Contacted {new Date(f.last_contact_at).toLocaleString()} ·{' '}
-                                  {f.status === 'open'
-                                    ? f.next_date <= data.today
-                                      ? 'Follow up again'
-                                      : 'Awaiting refill'
-                                    : ''}
-                                </p>
-                              )}
-                              {f.closure_reason && <p>{f.closure_reason}</p>}
-                            </div>
-                            <div className="business-actions">
-                              {f.status !== 'superseded' && (
-                                <button
-                                  className="secondary"
-                                  disabled={!enabled}
-                                  onClick={() =>
-                                    begin({
-                                      type: 'followup',
-                                      follow: f,
-                                      action: f.status === 'closed' ? 'reopen' : 'contact',
-                                      note: '',
-                                      date: '',
-                                    })
-                                  }
-                                >
-                                  {f.status === 'closed' ? 'Reopen reminder' : 'Record follow-up'}
-                                </button>
-                              )}
-                              {f.status === 'open' && (
-                                <button
-                                  className="primary"
-                                  disabled={!enabled}
-                                  onClick={() => {
-                                    setLabels((l) => ({
-                                      ...l,
-                                      [f.customer_id]: f.customer_name,
-                                      [f.medicine_id]: f.medicine_name,
-                                    }));
-                                    begin({
-                                      type: 'purchase',
-                                      value: addMedicine(
-                                        { ...freshPurchase(), customerId: f.customer_id },
-                                        f.medicine_id,
-                                      ),
-                                    });
-                                  }}
-                                >
-                                  Record refill
-                                </button>
-                              )}
-                              <button className="text-button" onClick={() => setAuditId(f.id)}>
-                                Contact history
+                            )}
+                            {f.closure_reason && <p>{f.closure_reason}</p>}
+                          </div>
+                          <div className="business-actions">
+                            {f.status !== 'superseded' && (
+                              <button
+                                className="secondary"
+                                disabled={!enabled}
+                                onClick={() =>
+                                  begin({
+                                    type: 'followup',
+                                    follow: f,
+                                    action: f.status === 'closed' ? 'reopen' : 'contact',
+                                    note: '',
+                                    date: '',
+                                  })
+                                }
+                              >
+                                {f.status === 'closed' ? 'Reopen reminder' : 'Record follow-up'}
                               </button>
-                            </div>
-                            {auditId === f.id && <AuditHistory id={f.id} />}
-                          </article>
-                        ))}
-                      </section>
-                    );
-                  })}
-                </div>
-              )}
-              {kind === 'history' && <AuditHistory id={auditId!} />}
-              {data.total === 0 && (
-                <section className="card empty-state">
-                  <h2>No matching records</h2>
-                  <p>
-                    {kind === 'followups'
-                      ? 'Reminders appear after an opted-in medicine supply is saved.'
-                      : 'Add a record or change your search.'}
-                  </p>
-                </section>
-              )}
-              <div className="business-actions pagination">
-                <button
-                  className="secondary"
-                  disabled={page === 0}
-                  onClick={() => setPage(page - 1)}
-                >
-                  Previous page
-                </button>
-                <span>
-                  Page {page + 1} · {data.total} {kind === 'followups' ? 'customers' : 'records'}
-                </span>
-                <button
-                  className="secondary"
-                  disabled={(page + 1) * 20 >= data.total}
-                  onClick={() => setPage(page + 1)}
-                >
-                  Next page
-                </button>
+                            )}
+                            {f.status === 'open' && (
+                              <button
+                                className="primary"
+                                disabled={!enabled}
+                                onClick={() => {
+                                  setLabels((l) => ({
+                                    ...l,
+                                    [f.customer_id]: f.customer_name,
+                                    [f.medicine_id]: f.medicine_name,
+                                  }));
+                                  begin({
+                                    type: 'purchase',
+                                    value: addMedicine(
+                                      { ...freshPurchase(), customerId: f.customer_id },
+                                      f.medicine_id,
+                                    ),
+                                  });
+                                }}
+                              >
+                                Record refill
+                              </button>
+                            )}
+                            <button className="text-button" onClick={() => setAuditId(f.id)}>
+                              Contact history
+                            </button>
+                          </div>
+                          {auditId === f.id && (
+                            <>
+                              <BackButton
+                                destination="follow-ups"
+                                onClick={() => {
+                                  setAuditId(undefined);
+                                  focusView('.business-toolbar input');
+                                }}
+                              />
+                              <AuditHistory id={f.id} />
+                            </>
+                          )}
+                        </article>
+                      ))}
+                    </section>
+                  );
+                })}
               </div>
-            </>
-          )}
-          {detail && (
-            <section className="card purchase-detail">
-              <h2>
-                Purchase #{detail.sequence} · {detail.status}
-              </h2>
-              <p>
-                {detail.customer_name} · {detail.purchase_date}
+            )}
+            {kind === 'history' && <AuditHistory id={auditId!} />}
+            {data.total === 0 && (
+              <section className="card empty-state">
+                <h2>No matching records</h2>
+                <p>
+                  {kind === 'followups'
+                    ? 'Reminders appear after an opted-in medicine supply is saved.'
+                    : 'Add a record or change your search.'}
+                </p>
+              </section>
+            )}
+            <div className="business-actions pagination">
+              <button className="secondary" disabled={page === 0} onClick={() => setPage(page - 1)}>
+                Previous page
+              </button>
+              <span>
+                Page {page + 1} · {data.total} {kind === 'followups' ? 'customers' : 'records'}
+              </span>
+              <button
+                className="secondary"
+                disabled={(page + 1) * 20 >= data.total}
+                onClick={() => setPage(page + 1)}
+              >
+                Next page
+              </button>
+            </div>
+          </>
+        )}
+        {detail && (
+          <section className="card purchase-detail">
+            <BackButton
+              destination={detailDestination}
+              onClick={() => {
+                setDetail(null);
+                focusView(
+                  detailOrigin === 'supplies'
+                    ? '.customer-supplies h2'
+                    : detailOrigin === 'history'
+                      ? '.related-history'
+                      : '.business-toolbar input',
+                );
+              }}
+            />
+            <h2 tabIndex={-1}>
+              Purchase #{detail.sequence} · {detail.status}
+            </h2>
+            <p>
+              {detail.customer_name} · {detail.purchase_date}
+            </p>
+            <p>{detail.notes}</p>
+            {detail.items.map((i, n) => (
+              <p key={n}>
+                {i.name_snapshot} {i.strength_snapshot} {i.form_snapshot} —{' '}
+                {i.quantity_milli / 1000} {i.unit}
               </p>
-              <p>{detail.notes}</p>
-              {detail.items.map((i, n) => (
-                <p key={n}>
-                  {i.name_snapshot} {i.strength_snapshot} {i.form_snapshot} —{' '}
-                  {i.quantity_milli / 1000} {i.unit}
-                </p>
-              ))}
-              {detail.supplies.map((s) => (
-                <p key={s.id}>
-                  Start {s.start_date} · {s.new_days} new + {s.remaining_used} carried days ·
-                  Run-out {s.run_out_date} ·{' '}
-                  {s.reminder_enabled ? 'Reminder enabled' : 'Reminder disabled'}
-                </p>
-              ))}
-              <div className="business-actions">
-                {detail.status === 'active' && (
-                  <>
-                    <button
-                      className="secondary"
-                      disabled={!enabled}
-                      onClick={() => editPurchase(detail)}
-                    >
-                      Correct purchase
-                    </button>
-                    <button
-                      className="secondary"
-                      disabled={!enabled}
-                      onClick={() =>
-                        data &&
-                        begin({
-                          type: 'cancel',
-                          purchase: detail,
-                          reason: '',
-                          revision: data.revision,
-                        })
-                      }
-                    >
-                      Cancel purchase
-                    </button>
-                  </>
-                )}
-                <button className="text-button" onClick={() => setDetail(null)}>
-                  Close details
-                </button>
-              </div>
-              <AuditHistory id={detail.id} />
-            </section>
-          )}
-        </>
-      )}
+            ))}
+            {detail.supplies.map((s) => (
+              <p key={s.id}>
+                Start {s.start_date} · {s.new_days} new + {s.remaining_used} carried days · Run-out{' '}
+                {s.run_out_date} · {s.reminder_enabled ? 'Reminder enabled' : 'Reminder disabled'}
+              </p>
+            ))}
+            <div className="business-actions">
+              {detail.status === 'active' && (
+                <>
+                  <button
+                    className="secondary"
+                    disabled={!enabled}
+                    onClick={() => editPurchase(detail)}
+                  >
+                    Correct purchase
+                  </button>
+                  <button
+                    className="secondary"
+                    disabled={!enabled}
+                    onClick={() =>
+                      data &&
+                      begin({
+                        type: 'cancel',
+                        purchase: detail,
+                        reason: '',
+                        revision: data.revision,
+                      })
+                    }
+                  >
+                    Cancel purchase
+                  </button>
+                </>
+              )}
+            </div>
+            <AuditHistory id={detail.id} />
+          </section>
+        )}
+      </div>
     </div>
   );
 }
@@ -1529,7 +1607,7 @@ function RelatedPurchases({
     };
   }, [filter, page]);
   return (
-    <div className="related-history">
+    <div className="related-history" tabIndex={-1}>
       {error && <p role="alert">{error}</p>}
       {data?.total === 0 && <p>No purchases recorded.</p>}
       <PurchaseList purchases={data?.purchases ?? []} onSelect={onSelect} />

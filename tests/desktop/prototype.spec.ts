@@ -581,6 +581,15 @@ test('customer, medicine, purchase, contact, refill and cancellation work throug
   await expect(
     restarted.getByRole('button', { name: 'View purchase #1', exact: true }),
   ).toBeVisible();
+  await restarted.getByRole('button', { name: 'View purchase #1', exact: true }).click();
+  await restarted.getByRole('button', { name: 'Back to purchase history', exact: true }).click();
+  await expect(restarted.locator('.related-history')).toBeFocused();
+  await expect(
+    restarted.getByRole('button', { name: 'View purchase #1', exact: true }),
+  ).toBeVisible();
+  await restarted.getByRole('button', { name: 'Back to customers', exact: true }).click();
+  await expect(restarted.locator('.related-history')).toHaveCount(0);
+  await expect(restarted.getByLabel('Search customers', { exact: true })).toHaveValue('98765');
 });
 
 test('business drafts survive locking and catalogue archive/restore preserves the original record', async () => {
@@ -700,8 +709,22 @@ test('current supplies and native CSV exports preserve filters, history and exis
   await expect(supplies).toContainText('Reminder disabled');
   await expect(supplies).toContainText('Due today');
   await page.screenshot({ path: 'test-results/current-supplies.png', fullPage: true });
+  await supplies.getByLabel('Search current medicines').fill('Report medicine A');
+  await expect(supplies.locator('.supply-report-row')).toHaveCount(1);
   await supplies.getByRole('button', { name: 'View source purchase #1' }).first().click();
   await expect(page.locator('.purchase-detail')).toContainText('Report purchase');
+  await page.getByRole('button', { name: 'Correct purchase', exact: true }).click();
+  await page.getByLabel('Purchase notes').fill('Unsaved correction');
+  await page.getByRole('button', { name: 'Back to purchase #1', exact: true }).click();
+  await page.getByRole('button', { name: 'Discard and leave', exact: true }).click();
+  await expect(page.locator('.purchase-detail h2')).toBeFocused();
+  await expect(page.locator('.purchase-detail')).toContainText('Report purchase');
+  await page.getByRole('button', { name: 'Back to current supplies', exact: true }).click();
+  await expect(supplies.getByLabel('Search current medicines')).toHaveValue('Report medicine A');
+  await expect(supplies.locator('.supply-report-row')).toHaveCount(1);
+  await expect(supplies.getByRole('heading', { level: 2 })).toBeFocused();
+  await supplies.getByRole('button', { name: 'Back to customers', exact: true }).click();
+  await expect(supplies).toHaveCount(0);
   const output = await mkdtemp(path.join(tmpdir(), 'medipharm-csv-desktop-'));
   const file = path.join(output, 'customers.csv');
   try {
@@ -961,6 +984,7 @@ for (const kind of ['customer', 'medicine'] as const) {
     await secondary.fill(kind === 'customer' ? '9876543210' : '10 mg');
     await page.getByRole('button', { name: `Save ${kind}`, exact: true }).click();
     await expect(page.locator('.record-row')).toContainText('Saved entry');
+    await page.getByLabel(`Search ${section.toLowerCase()}`, { exact: true }).fill('Saved');
     await page.getByRole('button', { name: `Edit ${kind}`, exact: true }).click();
     await name.fill('Changed entry');
     await secondary.fill(kind === 'customer' ? '9123456789' : '20 mg');
@@ -972,7 +996,20 @@ for (const kind of ['customer', 'medicine'] as const) {
       page.getByLabel('Archived — retain history and exclude from new purchases'),
     ).not.toBeChecked();
     await name.fill('Discard these edits');
-    await page.getByRole('button', { name: 'Discard draft', exact: true }).click();
+    await page
+      .getByRole('button', { name: `Back to ${section.toLowerCase()}`, exact: true })
+      .click();
+    await expect(dialog.getByRole('button', { name: 'Continue editing' })).toBeFocused();
+    await page.keyboard.press('Escape');
+    await expect(name).toHaveValue('Discard these edits');
+    await page
+      .getByRole('button', { name: `Back to ${section.toLowerCase()}`, exact: true })
+      .click();
+    await dialog.getByRole('button', { name: 'Discard and leave' }).click();
+    await expect(page.getByLabel(`Search ${section.toLowerCase()}`, { exact: true })).toHaveValue(
+      'Saved',
+    );
+    await expect(page.getByLabel(`Search ${section.toLowerCase()}`, { exact: true })).toBeFocused();
     await expect(page.locator('.record-row')).toContainText('Saved entry');
     await page.getByRole('button', { name: `Add ${kind}`, exact: true }).click();
     await name.fill('Do not save this');
@@ -997,6 +1034,18 @@ test('inline clear and discard retain the purchase, while confirmed shortcut nav
   await expect(page.getByLabel('Customer name', { exact: true })).toHaveValue('');
   await page.getByRole('button', { name: 'Discard inline changes', exact: true }).click();
   await expect(page.getByLabel('Purchase notes')).toHaveValue('Keep the parent purchase');
+  await page.getByRole('button', { name: 'Add medicine here' }).click();
+  await page.getByLabel('Medicine name', { exact: true }).fill('Inline medicine draft');
+  await page.getByRole('button', { name: 'Back to purchase', exact: true }).click();
+  await page.getByRole('button', { name: 'Continue editing', exact: true }).click();
+  await expect(page.getByLabel('Medicine name', { exact: true })).toHaveValue(
+    'Inline medicine draft',
+  );
+  await page.getByRole('button', { name: 'Back to purchase', exact: true }).click();
+  await expect(page.getByRole('dialog')).not.toContainText('will also be discarded');
+  await page.getByRole('button', { name: 'Discard and leave', exact: true }).click();
+  await expect(page.getByLabel('Purchase notes')).toHaveValue('Keep the parent purchase');
+  await expect(page.locator('.business-editor h2')).toBeFocused();
   await page.getByRole('button', { name: 'Add medicine here' }).click();
   await page.getByLabel('Medicine name', { exact: true }).fill('Inline medicine draft');
   await page.getByRole('button', { name: 'Register customer', exact: true }).click();
@@ -1183,8 +1232,57 @@ test('purchase clear resets the draft and preview, discard leaves records intact
   });
   await save.click();
   await expect(page.getByRole('button', { name: 'Retry same submission' })).toBeVisible();
-  for (const name of ['Clear', 'Save purchase', 'Discard draft', 'Refresh supply preview']) {
+  for (const name of [
+    'Clear',
+    'Save purchase',
+    'Discard draft',
+    'Refresh supply preview',
+    'Back to purchases',
+  ]) {
     await expect(page.getByRole('button', { name, exact: true })).toBeDisabled();
   }
   await expect(page.getByLabel('Days supplied', { exact: true })).toHaveValue('7');
+});
+
+test('Back preserves list pagination and archived filters and cancels its dialog when locked', async () => {
+  const page = await launch();
+  await setup(page);
+  await page.evaluate(async () => {
+    for (let i = 0; i < 25; i++) {
+      const result = await window.mediPharm.businessSave({
+        kind: 'customer',
+        requestId: crypto.randomUUID(),
+        id: null,
+        expectedVersion: null,
+        name: `Back customer ${String(i).padStart(2, '0')}`,
+        phone: '9876543210',
+        age: null,
+        notes: '',
+        archived: true,
+      });
+      if (!result.ok) throw new Error(result.message);
+    }
+  });
+  await page.getByRole('button', { name: 'Customers', exact: true }).click();
+  await expect(page.getByRole('button', { name: /^Back to / })).toHaveCount(0);
+  await page.getByLabel('Search customers', { exact: true }).fill('Back customer');
+  await page.getByLabel('Record status', { exact: true }).selectOption('archived');
+  await expect(page.locator('.record-row')).toHaveCount(20);
+  await page.getByRole('button', { name: 'Next page', exact: true }).click();
+  await expect(page.locator('.record-row')).toHaveCount(5);
+  const names = await page.locator('.record-row strong').allTextContents();
+  await page.getByRole('button', { name: 'Edit customer', exact: true }).first().click();
+  await page.getByLabel('Customer name', { exact: true }).fill('Unsaved back edit');
+  await page.getByRole('button', { name: 'Back to customers', exact: true }).click();
+  await expect(page.getByRole('dialog')).toBeVisible();
+  await page.evaluate(() => window.mediPharm.logout());
+  await login(page);
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(page.getByLabel('Customer name', { exact: true })).toHaveValue('Unsaved back edit');
+  await page.getByRole('button', { name: 'Back to customers', exact: true }).click();
+  await page.getByRole('button', { name: 'Discard and leave', exact: true }).click();
+  await expect(page.getByLabel('Search customers', { exact: true })).toHaveValue('Back customer');
+  await expect(page.getByLabel('Record status', { exact: true })).toHaveValue('archived');
+  await expect(page.locator('.pagination')).toContainText('Page 2');
+  await expect(page.locator('.record-row strong')).toHaveText(names);
 });

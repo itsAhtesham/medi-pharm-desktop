@@ -1355,3 +1355,9 @@ td {
 input[type='date']:not(:disabled):not([readonly]) {
   cursor: pointer;
 }
+
+.back-button {
+  display: inline-block;
+  margin-bottom: 12px;
+  font-weight: 600;
+}

@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { BackButton } from './back-button';
 import type { CsvInput, SupplyResult } from '../contracts/reports';
 
 export function CsvButton({
@@ -153,6 +154,7 @@ export function CustomerSupplies({
   }, []);
   return (
     <section className="card customer-supplies" aria-label="Current medicine supplies">
+      <BackButton destination="customers" onClick={onClose} />
       <div className="record-row">
         <div>
           <h2 ref={heading} tabIndex={-1}>
@@ -165,9 +167,6 @@ export function CustomerSupplies({
             </p>
           )}
         </div>
-        <button className="text-button" onClick={onClose}>
-          Close supply view
-        </button>
       </div>
       <p className="body-copy">
         Estimates use the recorded days of supply, not a count of medicines on hand. Future supplies
