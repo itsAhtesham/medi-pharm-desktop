@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import type { DashboardData } from '../contracts/dashboard';
+import { formatMoneyMinor } from '../domain/money';
+import type { DashboardData, ValuePeriod } from '../contracts/dashboard';
 import { Icon, type IconName } from './icons';
 import type { Navigate } from './navigation';
 export function Dashboard({
@@ -17,11 +18,12 @@ export function Dashboard({
 }) {
   const [data, setData] = useState<DashboardData | null>(null);
   const [error, setError] = useState('');
+  const [period, setPeriod] = useState<ValuePeriod>('daily');
   const [tick, setTick] = useState(0);
   useEffect(() => {
     if (!enabled) return;
     let live = true;
-    void window.mediPharm.dashboard().then((r) => {
+    void window.mediPharm.dashboard(period).then((r) => {
       if (!live) return;
       if (r.ok) {
         setData(r.data);
@@ -34,7 +36,7 @@ export function Dashboard({
     return () => {
       live = false;
     };
-  }, [enabled, revision, tick]);
+  }, [enabled, revision, tick, period]);
   useEffect(() => {
     const refresh = () => setTick((t) => t + 1);
     window.addEventListener('focus', refresh);
@@ -134,6 +136,12 @@ export function Dashboard({
                 disabled={!enabled}
               />
             </div>
+            <PurchaseValue
+              value={data.purchaseValue}
+              period={period}
+              onPeriod={setPeriod}
+              disabled={!enabled}
+            />
             <div className="dashboard-middle">
               <section className="panel">
                 <PanelTitle icon="chart" title="Purchase activity" subtitle="Last 7 days" />
@@ -394,6 +402,97 @@ function Metric({
         <small>{note}</small>
       </div>
     </button>
+  );
+}
+function PurchaseValue({
+  value,
+  period,
+  onPeriod,
+  disabled,
+}: {
+  value: DashboardData['purchaseValue'];
+  period: ValuePeriod;
+  onPeriod: (period: ValuePeriod) => void;
+  disabled: boolean;
+}) {
+  const max = value.buckets.reduce(
+    (highest, b) => (BigInt(b.totalMinor) > highest ? BigInt(b.totalMinor) : highest),
+    0n,
+  );
+  const label = (start: string) =>
+    value.period === 'daily'
+      ? start
+      : start.slice(0, 7) + (start.slice(0, 7) === value.end.slice(0, 7) ? ' (month to date)' : '');
+  return (
+    <section className="panel value-panel" aria-label="Purchase value">
+      <PanelTitle icon="bag" title="Purchase value" subtitle={value.start + ' – ' + value.end} />
+      <label>
+        Period{' '}
+        <select
+          aria-label="Purchase value period"
+          value={period}
+          disabled={disabled}
+          onChange={(e) => onPeriod(e.target.value as ValuePeriod)}
+        >
+          <option value="daily">Daily</option>
+          <option value="monthly">Monthly</option>
+        </select>
+      </label>
+      <p>
+        <strong data-testid="purchase-value">
+          {value.count ? formatMoneyMinor(value.totalMinor) : 'No purchases'}
+        </strong>
+      </p>
+      <h3>Purchase value over time</h3>
+      <div
+        className="purchase-chart"
+        role="img"
+        aria-label="Purchase value by period. Exact amounts are in the accompanying table."
+      >
+        {value.buckets.map((b) => (
+          <div
+            key={b.start}
+            className="chart-column"
+            title={
+              label(b.start) + ' · ' + b.count + ' purchases · ' + formatMoneyMinor(b.totalMinor)
+            }
+          >
+            <div className="bar-space">
+              <div
+                className="chart-bar"
+                style={{
+                  height: (max ? Number((BigInt(b.totalMinor) * 10000n) / max) / 100 : 0) + '%',
+                }}
+              />
+            </div>
+            <small>{value.period === 'daily' ? b.start.slice(8) : b.start.slice(5, 7)}</small>
+          </div>
+        ))}
+      </div>
+      <details>
+        <summary>View exact amounts</summary>
+        <div className="table-scroll">
+          <table aria-label="Purchase value over time">
+            <thead>
+              <tr>
+                <th>Period</th>
+                <th>Purchases</th>
+                <th>Purchase value</th>
+              </tr>
+            </thead>
+            <tbody>
+              {value.buckets.map((b) => (
+                <tr key={b.start}>
+                  <td>{label(b.start)}</td>
+                  <td>{b.count}</td>
+                  <td>{b.count ? formatMoneyMinor(b.totalMinor) : 'No purchases'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </details>
+    </section>
   );
 }
 function PanelTitle({

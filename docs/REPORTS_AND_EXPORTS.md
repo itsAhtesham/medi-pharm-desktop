@@ -12,7 +12,7 @@ Cancelling or correcting purchases changes the report through the existing chain
 
 ## Export scope
 
-Use **Export CSV** on Customers, Medicines, Purchases, Reports or Follow-ups. This exports all records matching the displayed search/status filters across all pages. Follow-ups also offer **Export matching follow-up history**; its filters select cycles, then include their events.
+Use **Export CSV** on Customers, Medicines or Follow-ups. Purchases, Reports and customer or medicine purchase history offer **Export purchase items** and **Export purchase summaries**. This exports all records matching the displayed search/status filters across all pages. Follow-ups also offer **Export matching follow-up history**; its filters select cycles, then include their events.
 
 Use **Settings → Open CSV exports** (or the CSV exports sidebar shortcut) for the whole dataset, including archived catalogue entries, cancelled purchases and all reminder cycles.
 
@@ -20,11 +20,18 @@ Use **Settings → Open CSV exports** (or the CSV exports sidebar shortcut) for 
 | --- | --- | --- |
 | Customers | Customer | Name, displayed phone, optional age, notes and active/archive state |
 | Medicines | Catalogue entry | Name, strength, form and active/archive state |
-| Purchases and items | Purchase medicine/unit row | Purchase number/date/status, customer, dated medicine labels, exact quantity, unit, supply inputs/estimates and purchase notes |
+| Purchase items | Purchase medicine/unit row | Purchase number/date/status, customer, dated medicine labels, exact quantity, unit, line amount in INR, supply inputs/estimates and purchase notes |
+| Purchase summaries | Purchase | Number, date, status, customer, currency, subtotal, discount type, percentage (when entered), deduction and final total |
 | Follow-up cycles | Medicine reminder cycle | Customer/medicine, purchase number, current status, next contact, run-out, last contact, closure |
 | Contact and follow-up history | Recorded event | Cycle context plus event time/action/note and before/after status/contact date/closure reason |
 
 Multiple units repeat the shared medicine supply fields in the purchase export; do not sum those repeated day counts. Purchase filters select purchases and export all their quantity rows. Contact-history context describes the cycle now; the event columns capture the dated change. Business dates use Asia/Kolkata; event timestamp columns explicitly use UTC. Authentication tables, password/recovery hashes and device keys are excluded.
+
+The medicine filter selects whole purchases. A summary includes every item in the matching purchase. Rupee amounts use ungrouped decimal text with two decimal places.
+
+## Overview purchase value
+
+Daily covers the last seven pharmacy dates. Monthly covers the current month to date and the preceding eleven months. Each active purchase contributes its final INR amount once on its purchase date. The exact-amount table includes the count for each period. A period containing only free purchases shows ₹0.00. An empty period shows **No purchases**.
 
 ## Saving and spreadsheet handling
 

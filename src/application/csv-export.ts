@@ -1,3 +1,4 @@
+import { formatDecimalMinor } from '../domain/money';
 import { OwnerService } from './owner-service';
 import { ApplicationFailure } from './failure';
 import { csvInputSchema, csvResultSchema, type CsvInput } from '../contracts/reports';
@@ -7,6 +8,11 @@ import { writeCsvFile } from '../platform/csv-file';
 type Cell = string | number | null;
 type Column = { key: string; label: string; format?: (v: Cell) => Cell };
 const column = (key: string, label: string): Column => ({ key, label });
+const decimalColumn = (key: string, label: string): Column => ({
+  key,
+  label,
+  format: (v) => (v === null ? '' : formatDecimalMinor(v)),
+});
 const timestamp = (key: string, label: string): Column => ({
   key,
   label,
@@ -71,13 +77,18 @@ export class CsvExporter {
         label: 'Record status',
         format: (v) => (v === null ? 'active' : 'archived'),
       });
-    } else if (input.kind === 'purchases') {
-      from =
-        'purchases p JOIN customers c ON c.id=p.customer_id JOIN purchase_items i ON i.purchase_id=p.id JOIN medicine_supplies s ON s.purchase_id=p.id AND s.medicine_id=i.medicine_id AND s.included=1';
-      projection =
-        'p.sequence,p.purchase_date,p.status,c.name AS customer,c.phone,p.notes,i.name_snapshot AS medicine,i.strength_snapshot AS strength,i.form_snapshot AS form,i.quantity_milli,i.unit,s.start_date,s.new_days,s.mode,s.remaining_override,s.remaining_used,s.run_out_date,s.reminder_enabled,s.manual_reminder_date';
+    } else if (input.kind === 'purchases' || input.kind === 'purchaseTotals') {
+      from = 'purchases p JOIN customers c ON c.id=p.customer_id';
+      const summary = input.kind === 'purchaseTotals';
+      if (!summary)
+        from +=
+          ' JOIN purchase_items i ON i.purchase_id=p.id JOIN medicine_supplies s ON s.purchase_id=p.id AND s.medicine_id=i.medicine_id AND s.included=1';
+      projection = 'p.sequence,p.purchase_date,p.status,c.name AS customer,c.phone,p.currency_code';
+      projection += summary
+        ? ',p.subtotal_minor,p.discount_type,p.discount_percent_bps,p.discount_amount_minor,p.total_amount_minor'
+        : ',p.notes,i.amount_minor,i.name_snapshot AS medicine,i.strength_snapshot AS strength,i.form_snapshot AS form,i.quantity_milli,i.unit,s.start_date,s.new_days,s.mode,s.remaining_override,s.remaining_used,s.run_out_date,s.reminder_enabled,s.manual_reminder_date';
       where = 'p.pharmacy_id=?';
-      order = 'p.purchase_date DESC,p.sequence DESC,i.position';
+      order = 'p.purchase_date DESC,p.sequence DESC' + (summary ? '' : ',i.position');
       if (input.customerId) {
         where += ' AND p.customer_id=?';
         args.push(input.customerId);
@@ -97,21 +108,34 @@ export class CsvExporter {
         column('status', 'Purchase status'),
         column('customer', 'Customer'),
         column('phone', 'Phone'),
-        column('medicine', 'Medicine at purchase'),
-        column('strength', 'Strength at purchase'),
-        column('form', 'Form at purchase'),
-        { key: 'quantity_milli', label: 'Quantity', format: quantity },
-        column('unit', 'Unit'),
-        column('start_date', 'Supply start'),
-        column('new_days', 'New days'),
-        column('mode', 'Refill mode'),
-        column('remaining_override', 'Remaining override'),
-        column('remaining_used', 'Carried days'),
-        column('run_out_date', 'Run-out date'),
-        { key: 'reminder_enabled', label: 'Reminder enabled', format: (v) => (v ? 'yes' : 'no') },
-        column('manual_reminder_date', 'Initial manual reminder'),
-        column('notes', 'Purchase notes'),
+        column('currency_code', 'Currency'),
       ];
+      if (summary)
+        columns.push(
+          decimalColumn('subtotal_minor', 'Subtotal'),
+          column('discount_type', 'Discount type'),
+          decimalColumn('discount_percent_bps', 'Discount percentage'),
+          decimalColumn('discount_amount_minor', 'Discount amount'),
+          decimalColumn('total_amount_minor', 'Total amount'),
+        );
+      else
+        columns.push(
+          column('medicine', 'Medicine at purchase'),
+          column('strength', 'Strength at purchase'),
+          column('form', 'Form at purchase'),
+          { key: 'quantity_milli', label: 'Quantity', format: quantity },
+          column('unit', 'Unit'),
+          column('start_date', 'Supply start'),
+          column('new_days', 'New days'),
+          column('mode', 'Refill mode'),
+          column('remaining_override', 'Remaining override'),
+          column('remaining_used', 'Carried days'),
+          column('run_out_date', 'Run-out date'),
+          { key: 'reminder_enabled', label: 'Reminder enabled', format: (v) => (v ? 'yes' : 'no') },
+          column('manual_reminder_date', 'Initial manual reminder'),
+          column('notes', 'Purchase notes'),
+          decimalColumn('amount_minor', 'Line amount'),
+        );
     } else {
       from =
         'follow_ups f JOIN customers c ON c.id=f.customer_id JOIN medicines m ON m.id=f.medicine_id JOIN purchases p ON p.id=f.purchase_id JOIN medicine_supplies s ON s.id=f.supply_id';

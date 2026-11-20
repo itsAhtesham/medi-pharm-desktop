@@ -514,6 +514,7 @@ test('customer, medicine, purchase, contact, refill and cancellation work throug
   await page.getByLabel('Strength', { exact: true }).fill('10 mg');
   await page.getByRole('button', { name: 'Save medicine', exact: true }).click();
   await page.getByLabel('Quantity', { exact: true }).fill('1.250');
+  await page.getByLabel('Amount (₹)', { exact: true }).fill('0');
   await page.getByLabel('Days supplied', { exact: true }).fill('1');
   await page.getByLabel('Enable reminder for Test medicine · 10 mg · tablet').check();
   await page.getByRole('button', { name: 'Refresh supply preview' }).click();
@@ -572,6 +573,7 @@ test('customer, medicine, purchase, contact, refill and cancellation work throug
   await expect(page.getByLabel('Refill choice', { exact: true })).toHaveValue('');
   await expect(page.locator('.business-editor')).toContainText('Customer: Asha Rao');
   await page.getByLabel('Days supplied', { exact: true }).fill('3');
+  await page.getByLabel('Amount (₹)', { exact: true }).fill('0');
   await page.getByLabel('Refill choice', { exact: true }).selectOption('extend');
   await page.getByLabel('Enable reminder for Test medicine 10 mg tablet').check();
   await page.getByRole('button', { name: 'Refresh supply preview' }).click();
@@ -694,8 +696,10 @@ test('current supplies and native CSV exports preserve filters, history and exis
       date: today,
       notes: 'Report purchase',
       reason: '',
+      pricing: { currencyCode: 'INR' as const, discount: { type: 'none' as const } },
       items: medicines.map((medicineId) => ({
         medicineId,
+        amount: '125.50',
         quantity: '1.250',
         unit: 'tablets' as const,
       })),
@@ -716,6 +720,7 @@ test('current supplies and native CSV exports preserve filters, history and exis
       ...p,
       kind: 'purchase',
       requestId: crypto.randomUUID(),
+      previewFingerprint: preview.data.fingerprint,
       expectedRevision: preview.data.revision,
     });
     if (!saved.ok) throw new Error(saved.message);
@@ -874,7 +879,8 @@ test('dashboard quick actions preserve drafts, show saved totals and fit desktop
       date: today,
       notes: 'Dashboard example',
       reason: '',
-      items: [{ medicineId, quantity: '10', unit: 'tablets' as const }],
+      pricing: { currencyCode: 'INR' as const, discount: { type: 'none' as const } },
+      items: [{ medicineId, amount: '125.50', quantity: '10', unit: 'tablets' as const }],
       supplies: [
         {
           medicineId,
@@ -894,6 +900,7 @@ test('dashboard quick actions preserve drafts, show saved totals and fit desktop
       ...draft,
       kind: 'purchase',
       requestId: crypto.randomUUID(),
+      previewFingerprint: preview.data.fingerprint,
       expectedRevision: preview.data.revision,
     });
     if (!saved.ok) throw new Error(saved.message);
@@ -1130,8 +1137,9 @@ test('an uncertain save keeps the submitted form frozen instead of allowing navi
   await expect(page.getByRole('button', { name: 'Medicines', exact: true })).toBeDisabled();
 });
 
-test('purchase fields stay independent without numbered labels and date fields open their native picker', async () => {
-  const page = await launch();
+test('purchase amounts, supplies and calendar fields survive save, restart, export and restore', async () => {
+  test.setTimeout(90_000);
+  let page = await launch();
   await setup(page);
   await page.getByRole('button', { name: 'Purchases', exact: true }).click();
   await page.getByRole('button', { name: 'New purchase', exact: true }).click();
@@ -1153,6 +1161,13 @@ test('purchase fields stay independent without numbered labels and date fields o
     name: 'Quantity row for Second medicine · 10 mg · tablet',
     exact: true,
   });
+  await firstRow.getByLabel('Amount (₹)').fill('125.50');
+  await secondRow.getByLabel('Amount (₹)').fill('74.50');
+  await page.getByLabel('Discount (₹)', { exact: true }).fill('200.01');
+  await expect(page.locator('.business-editor')).toContainText('The discount exceeds the subtotal');
+  await page.getByLabel('Enter discount as percentage').check();
+  await expect(page.getByLabel('Discount (%)', { exact: true })).toHaveValue('');
+  await page.getByLabel('Discount (%)', { exact: true }).fill('12.50');
   await firstRow.getByLabel('Quantity', { exact: true }).fill('2');
   await secondRow.getByLabel('Quantity', { exact: true }).fill('3.5');
   await secondRow.getByLabel('Unit', { exact: true }).selectOption('strips');
@@ -1214,12 +1229,108 @@ test('purchase fields stay independent without numbered labels and date fields o
   await dates[2].fill(today);
   await expect(dates[2]).toHaveValue(today);
   await page.getByRole('button', { name: 'Refresh supply preview' }).click();
+  await expect(page.locator('.purchase-money')).toContainText('₹175.00');
+  await firstRow.getByLabel('Amount (₹)').fill('125.501');
+  await expect(page.getByRole('button', { name: 'Save purchase', exact: true })).toBeDisabled();
+  await expect(page.locator('.business-editor')).toContainText('at most two decimal places');
+  await firstRow.getByLabel('Amount (₹)').fill('125.50');
+  await page.getByRole('button', { name: 'Refresh supply preview' }).click();
   await expect(firstSupply.locator('.supply-estimate')).toContainText('Carry 0 days');
   await expect(secondSupply.getByLabel('Days supplied', { exact: true })).toHaveValue('14');
+  for (const size of [
+    [1366, 768, 1],
+    [1366, 768, 1.25],
+    [1366, 768, 1.5],
+    [1920, 1080, 1],
+  ]) {
+    const actual = await app!.evaluate(({ BrowserWindow }, [width, height, zoom]) => {
+      const window = BrowserWindow.getAllWindows()[0];
+      window.setSize(width, height);
+      window.webContents.setZoomFactor(zoom);
+      return window.getContentBounds().width / zoom;
+    }, size);
+    await expect.poll(() => page.evaluate(() => window.innerWidth)).toBeCloseTo(actual, 0);
+    for (const control of [
+      firstRow.getByLabel('Amount (₹)'),
+      page.getByLabel('Discount (%)', { exact: true }),
+      page.getByRole('button', { name: 'Save purchase', exact: true }),
+    ]) {
+      await control.focus();
+      await expect(control).toBeFocused();
+      await expect(control).toBeInViewport({ ratio: 0.95 });
+    }
+  }
   await page.getByRole('button', { name: 'Save purchase', exact: true }).click();
   await page.getByRole('button', { name: 'View purchase #1', exact: true }).click();
   await expect(page.locator('.purchase-detail')).toContainText('2 tablets');
   await expect(page.locator('.purchase-detail')).toContainText('3.5 strips');
+  await expect(page.locator('.purchase-detail')).toContainText('₹175.00');
+  await page.getByRole('button', { name: 'View audit history' }).click();
+  await expect(page.locator('.history-view')).toContainText('₹175.00');
+  await expect(page.locator('.history-view')).toContainText('12.50%');
+  await app!.close();
+  app = undefined;
+  page = await launch();
+  await login(page);
+  await expect(page.getByTestId('purchase-value')).toHaveText('₹175.00');
+  await page.getByLabel('Purchase value period').selectOption('monthly');
+  await page.getByText('View exact amounts').click();
+  await expect(page.getByRole('table', { name: 'Purchase value over time' })).toContainText(
+    'month to date',
+  );
+  await page.getByRole('button', { name: 'Purchases', exact: true }).click();
+  await expect(page.locator('.record-row')).toContainText('₹175.00');
+  const output = await mkdtemp(path.join(tmpdir(), 'medipharm-purchase-csv-'));
+  try {
+    for (const [index, label] of ['Export purchase items', 'Export purchase summaries'].entries()) {
+      const filename = path.join(output, index + '.csv');
+      await app!.evaluate(({ dialog }, file) => {
+        dialog.showSaveDialog = async () => ({ canceled: false, filePath: file });
+      }, filename);
+      await page.getByRole('button', { name: label, exact: true }).click();
+      await expect(
+        page.getByText('CSV saved: ' + (index === 0 ? 2 : 1) + ' data rows.'),
+      ).toBeVisible();
+      const content = await readFile(filename, 'utf8');
+      if (index === 0) {
+        expect(content).toContain('"125.50"');
+        expect(content).toContain('"74.50"');
+      } else expect(content).toContain('"200.00","percentage","12.50","25.00","175.00"');
+    }
+  } finally {
+    await rm(output, { recursive: true, force: true });
+  }
+  const archive = await configureBackups(page);
+  await app!.evaluate(({ dialog }, file) => {
+    dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [file] });
+    dialog.showMessageBox = async () => ({ response: 1, checkboxChecked: false });
+  }, archive);
+  await page.getByLabel('Passphrase for the archive').fill(backupPassphrase);
+  await page.getByRole('button', { name: 'Choose and verify backup' }).click();
+  await page.getByLabel('Type RESTORE to confirm replacement').fill('RESTORE');
+  await page.getByRole('button', { name: 'Restore this pharmacy' }).click();
+  await login(page);
+  await expect(page.getByTestId('purchase-value')).toHaveText('₹175.00');
+  await page.getByRole('button', { name: 'Purchases', exact: true }).click();
+  await page.getByRole('button', { name: 'View purchase #1' }).click();
+  await expect(page.locator('.purchase-detail')).toContainText('₹125.50');
+  await expect(page.locator('.purchase-detail')).toContainText('₹74.50');
+  await page.getByRole('button', { name: 'Correct purchase' }).click();
+  await expect(page.getByLabel('Discount (%)', { exact: true })).toHaveValue('12.50');
+  await page.getByLabel('Enter discount as percentage').uncheck();
+  await page.getByLabel('Discount (₹)', { exact: true }).fill('10');
+  await page.getByLabel('Correction reason').fill('Apply fixed discount');
+  await page.getByRole('button', { name: 'Refresh supply preview' }).click();
+  await page.getByRole('button', { name: 'Save purchase' }).click();
+  await expect(page.locator('.record-row')).toContainText('₹190.00');
+  await page.getByRole('button', { name: 'View purchase #1' }).click();
+  await page.getByRole('button', { name: 'Cancel purchase', exact: true }).click();
+  await page.getByLabel('Cancellation reason').fill('Duplicate record');
+  await page.getByRole('button', { name: 'Confirm cancellation' }).click();
+  await expect(page.locator('.record-row')).toContainText('cancelled');
+  await expect(page.locator('.record-row')).toContainText('₹190.00');
+  await page.getByRole('button', { name: 'Overview', exact: true }).click();
+  await expect(page.getByTestId('purchase-value')).toHaveText('No purchases');
 });
 
 test('purchase clear resets the draft and preview, discard leaves records intact, and uncertain saves freeze all actions', async () => {
@@ -1237,6 +1348,7 @@ test('purchase clear resets the draft and preview, discard leaves records intact
   await page.getByLabel('Purchase date', { exact: true }).fill('2026-01-01');
   await page.getByLabel('Days supplied', { exact: true }).fill('7');
   await page.getByLabel('Purchase notes').fill('Discard these notes');
+  await page.getByLabel('Amount (₹)', { exact: true }).fill('0');
   await page.getByRole('button', { name: 'Refresh supply preview' }).click();
   const save = page.getByRole('button', { name: 'Save purchase', exact: true });
   await expect(save).toBeEnabled();
@@ -1257,6 +1369,7 @@ test('purchase clear resets the draft and preview, discard leaves records intact
   await page.getByRole('button', { name: 'New purchase', exact: true }).click();
   await page.getByRole('button', { name: 'Reset Customer · 9876543210', exact: true }).click();
   await page.getByRole('button', { name: 'Reset Medicine · tablet', exact: true }).click();
+  await page.getByLabel('Amount (₹)', { exact: true }).fill('0');
   await page.getByLabel('Days supplied', { exact: true }).fill('7');
   await page.getByRole('button', { name: 'Refresh supply preview' }).click();
   await app!.evaluate(({ ipcMain }) => {
@@ -1391,7 +1504,15 @@ test('customer and medicine purchase history are dedicated views and preserve th
         date: today,
         notes: `History purchase ${i}`,
         reason: '',
-        items: [{ medicineId: medicine.data.id, quantity: '1', unit: 'tablets' as const }],
+        pricing: { currencyCode: 'INR' as const, discount: { type: 'none' as const } },
+        items: [
+          {
+            medicineId: medicine.data.id,
+            amount: '125.50',
+            quantity: '1',
+            unit: 'tablets' as const,
+          },
+        ],
         supplies: [
           {
             medicineId: medicine.data.id,
@@ -1411,6 +1532,7 @@ test('customer and medicine purchase history are dedicated views and preserve th
         ...draft,
         kind: 'purchase',
         requestId: crypto.randomUUID(),
+        previewFingerprint: preview.data.fingerprint,
         expectedRevision: preview.data.revision,
       });
       if (!result.ok) throw new Error(result.message);

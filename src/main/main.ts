@@ -1,4 +1,5 @@
 import { csvInputSchema, supplyQuerySchema } from '../contracts/reports';
+import { periodSchema } from '../contracts/dashboard';
 import { querySchema, businessMutationSchema, purchaseDraftSchema } from '../contracts/business';
 import {
   app,
@@ -333,9 +334,9 @@ function registerApi(): void {
   });
   handle(
     channels.dashboard,
-    noInputSchema,
+    periodSchema.default('daily'),
     'read',
-    () => service?.request({ command: 'dashboard' }) ?? failure(),
+    (input) => service?.request({ command: 'dashboard', input }) ?? failure(),
   );
   handle(channels.lifecycle, noInputSchema, null, async () => {
     await syncAccountState();

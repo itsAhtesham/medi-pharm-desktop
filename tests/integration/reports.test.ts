@@ -84,9 +84,10 @@ function purchase(
     date,
     notes: 'Supply note',
     reason: '',
+    pricing: { currencyCode: 'INR' as const, discount: { type: 'percentage', percent: '12.50' } },
     items: [
-      { medicineId, quantity: '1.250', unit: 'tablets' },
-      { medicineId, quantity: '2', unit: 'strips' },
+      { medicineId, amount: '125.50', quantity: '1.250', unit: 'tablets' },
+      { medicineId, amount: '74.50', quantity: '2', unit: 'strips' },
     ],
     supplies: [
       {
@@ -101,11 +102,13 @@ function purchase(
       },
     ],
   };
+  const preview = business.preview(p);
   return business.save({
     ...p,
     kind: 'purchase',
     requestId: randomUUID(),
-    expectedRevision: business.preview(p).revision,
+    previewFingerprint: preview.fingerprint,
+    expectedRevision: preview.revision,
   });
 }
 function cancel(id: string) {
@@ -165,6 +168,11 @@ describe('CSV exports', () => {
     expect(rows.text).toContain('"Medicine A","10 mg","tablet","1.250","tablets"');
     expect(rows.text).toContain('"2.000","strips"');
     expect(rows.text).not.toContain('Renamed');
+    expect(rows.text).toContain('"125.50"');
+    expect(rows.text).toContain('"74.50"');
+    const summary = csv({ kind: 'purchaseTotals', medicineId: m });
+    expect(summary.rows).toBe(1);
+    expect(summary.text).toContain('"INR","200.00","percentage","12.50","25.00","175.00"');
     cancel(p.id);
     expect(csv({ kind: 'purchases' }).text).toContain('"cancelled"');
   });

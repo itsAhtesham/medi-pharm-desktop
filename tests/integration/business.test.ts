@@ -5,6 +5,8 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { PharmacyDatabase } from '../../src/db/pharmacy-database';
 import { OwnerService } from '../../src/application/owner-service';
+import { DashboardService } from '../../src/application/dashboard-service';
+import { formatDecimalMinor } from '../../src/domain/money';
 import { BusinessService } from '../../src/application/business-service';
 import { inspectConnection } from '../../src/db/health';
 import { BackupManager } from '../../src/backup/manager';
@@ -56,7 +58,8 @@ function draft(c: string, m: string, date = '2026-11-01', days = 7): PurchaseDra
     date,
     notes: '',
     reason: '',
-    items: [{ medicineId: m, quantity: '1.250', unit: 'tablets' }],
+    pricing: { currencyCode: 'INR' as const, discount: { type: 'none' as const } },
+    items: [{ medicineId: m, amount: '125.50', quantity: '1.250', unit: 'tablets' }],
     supplies: [
       {
         medicineId: m,
@@ -77,6 +80,7 @@ function save(p: PurchaseDraft) {
     ...p,
     kind: 'purchase',
     requestId: randomUUID(),
+    previewFingerprint: preview.fingerprint,
     expectedRevision: preview.revision,
   });
 }
@@ -89,8 +93,10 @@ function correction(id: string): PurchaseDraft {
     date: p.purchase_date,
     notes: p.notes,
     reason: 'Correct entered details',
+    pricing: { currencyCode: 'INR' as const, discount: { type: 'none' as const } },
     items: p.items.map((i) => ({
       medicineId: i.medicine_id,
+      amount: formatDecimalMinor(i.amount_minor),
       quantity: String(i.quantity_milli / 1000),
       unit: i.unit,
     })),
@@ -192,8 +198,8 @@ describe('catalogue and purchase workflows', () => {
     save(draft(c, m));
     const p = draft(c, m, '2026-11-04', 11);
     p.items.push(
-      { medicineId: m, quantity: '2', unit: 'strips' },
-      { medicineId: m2, quantity: '0.001', unit: 'bottles' },
+      { medicineId: m, amount: '125.50', quantity: '2', unit: 'strips' },
+      { medicineId: m2, amount: '125.50', quantity: '0.001', unit: 'bottles' },
     );
     p.supplies.push({ ...p.supplies[0], medicineId: m2, days: 1 });
     expect(app.preview(p).supplies).toMatchObject([
@@ -306,7 +312,7 @@ describe('catalogue and purchase workflows', () => {
       m = medicine(),
       m2 = medicine('Other');
     const p = draft(c, m);
-    p.items.push({ medicineId: m2, quantity: '1', unit: 'packs' });
+    p.items.push({ medicineId: m2, amount: '125.50', quantity: '1', unit: 'packs' });
     p.supplies.push({ ...p.supplies[0], medicineId: m2 });
     const saved = save(p);
     const id = follow().find((f) => f.medicine_id === m)!.id;
@@ -384,6 +390,7 @@ describe('catalogue and purchase workflows', () => {
         ...p,
         kind: 'purchase',
         requestId: randomUUID(),
+        previewFingerprint: preview.fingerprint,
         expectedRevision: preview.revision,
       }),
     ).toThrow('context changed');
@@ -391,9 +398,16 @@ describe('catalogue and purchase workflows', () => {
       ...p,
       kind: 'purchase' as const,
       requestId: randomUUID(),
+      previewFingerprint: app.preview(p).fingerprint,
       expectedRevision: app.preview(p).revision,
     };
+    const changed = {
+      ...cmd,
+      pricing: { ...cmd.pricing, discount: { type: 'fixed' as const, amount: '10.00' } },
+    };
+    expect(() => app.save(changed)).toThrow('Refresh the preview');
     const saved = app.save(cmd);
+    expect(() => app.save(changed)).toThrow('different details');
     expect(app.save(cmd)).toEqual(saved);
     expect(app.query({ kind: 'purchases' }).total).toBe(1);
     const edit = correction(saved.id);
@@ -404,6 +418,7 @@ describe('catalogue and purchase workflows', () => {
         ...edit,
         kind: 'purchase',
         requestId: randomUUID(),
+        previewFingerprint: stale.fingerprint,
         expectedRevision: stale.revision,
       }),
     ).toThrow('context changed');
@@ -446,14 +461,43 @@ describe('catalogue and purchase workflows', () => {
     expect(due.total).toBe(1);
     expect(due.followups).toHaveLength(21);
   });
+  it('moves corrected purchase value across days and counts a zero total until cancellation', () => {
+    const dashboard = new DashboardService(owner, now);
+    const p = draft(customer(), medicine(), '2026-11-19');
+    const record = save(p);
+    expect(dashboard.read().purchaseValue.buckets.at(-2)).toMatchObject({
+      count: 1,
+      totalMinor: '12550',
+    });
+    const revised = correction(record.id);
+    revised.date = '2026-11-20';
+    revised.supplies[0].start = revised.date;
+    revised.pricing.discount = { type: 'percentage', percent: '100' };
+    save(revised);
+    const value = dashboard.read().purchaseValue;
+    expect(value.buckets.at(-2)).toMatchObject({ count: 0, totalMinor: '0' });
+    expect(value.buckets.at(-1)).toMatchObject({ count: 1, totalMinor: '0' });
+    cancel(record.id);
+    expect(dashboard.read().purchaseValue).toMatchObject({ count: 0, totalMinor: '0' });
+  });
   it('survives reopening and includes real business records in verified encrypted backup', async () => {
     const c = customer(),
       m = medicine();
-    save(draft(c, m));
+    const draftToSave = draft(c, m);
+    const preview = app.preview(draftToSave);
+    const frozen = {
+      ...draftToSave,
+      kind: 'purchase' as const,
+      requestId: randomUUID(),
+      previewFingerprint: preview.fingerprint,
+      expectedRevision: preview.revision,
+    };
+    const saved = app.save(frozen);
     owner.close();
     owner = new OwnerService(new PharmacyDatabase(root), now);
     await owner.login(access);
     app = new BusinessService(owner, now);
+    expect(app.save(frozen)).toEqual(saved);
     expect(app.query({ kind: 'purchases' }).total).toBe(1);
     expect(follow()).toHaveLength(1);
     const backups = new BackupManager(owner);
@@ -484,11 +528,19 @@ describe('catalogue and purchase workflows', () => {
     tamper("UPDATE follow_ups SET paused_state='{}' WHERE status='superseded'");
     tamper("UPDATE follow_ups SET calculated_date='2026-11-01' WHERE status='open'");
     tamper('UPDATE number_counters SET next_number=1');
+    tamper('UPDATE purchase_items SET amount_minor=amount_minor+1');
+    const last = app.query({ kind: 'purchases' }).purchases[0];
+    cancel(last.id);
+    tamper(
+      "UPDATE purchase_items SET amount_minor=amount_minor+1 WHERE purchase_id IN (SELECT id FROM purchases WHERE status='cancelled')",
+    );
   });
   it('restores populated business data and follow-up history from an authenticated archive', async () => {
     const c = customer(),
       m = medicine();
-    save(draft(c, m));
+    const p = draft(c, m);
+    p.pricing.discount = { type: 'percentage', percent: '10' };
+    const saved = save(p);
     const f = follow()[0];
     action(f.id, 'contact', '2026-11-25');
     const backups = new BackupManager(owner);
@@ -496,6 +548,34 @@ describe('catalogue and purchase workflows', () => {
     await backups.create();
     const folder = path.join(root, 'backups');
     const archive = readdirSync(folder).find((n) => n.endsWith('.mpbackup'))!;
+    const fresh = mkdtempSync(path.join(tmpdir(), 'medipharm-restored-'));
+    const restoredOwner = new OwnerService(new PharmacyDatabase(fresh), now);
+    const restoredBackups = new BackupManager(restoredOwner);
+    try {
+      const staged = await restoredBackups.preview(
+        path.join(folder, archive),
+        'portable business passphrase',
+      );
+      await restoredBackups.restore(staged.token);
+      await restoredOwner.login(access);
+      const service = new BusinessService(restoredOwner, now);
+      const purchase = service.query({ kind: 'purchases', id: saved.id }).purchases[0];
+      expect(purchase).toMatchObject({
+        currency_code: 'INR',
+        subtotal_minor: 12550,
+        discount_type: 'percentage',
+        discount_percent_bps: 1000,
+        discount_amount_minor: 1255,
+        total_amount_minor: 11295,
+        items: [{ amount_minor: 12550 }],
+      });
+      const audit = service.query({ kind: 'history', id: saved.id }).history;
+      expect(JSON.parse(audit[0].after_json).value.total_amount_minor).toBe(11295);
+    } finally {
+      restoredBackups.close();
+      restoredOwner.close();
+      rmSync(fresh, { recursive: true, force: true });
+    }
     customer('After backup');
     const preview = await backups.preview(
       path.join(folder, archive),

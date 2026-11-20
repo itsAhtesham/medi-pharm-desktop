@@ -21,7 +21,7 @@ Retention keeps the newest archive for each of 14 days and 8 weeks per dataset. 
 3. Review the pharmacy name, captured date, revision and counts. A different pharmacy dataset is explicitly identified. Local edits after the preview invalidate it; previews expire after ten minutes.
 4. Type `RESTORE`, select Restore this pharmacy, and confirm the native replacement prompt. Unsaved drafts and changes later than the archive will be replaced.
 5. The app verifies a safety archive, retains the old live directory, publishes the staged dataset through its recovery journal, and clears sessions/drafts. Sign in with the owner credentials captured by the archive. A later password or recovery-code change is also reverted by restoring older data.
-6. Verify the pharmacy details. The app attempts a new backup after restore and reports that result separately. Old data remains in `recovery/` and safety archives remain pinned; there is no automatic cleanup of those generations yet.
+6. Verify the pharmacy details. Open a restored purchase and compare its line amounts, discount and final INR amount with the original. The app attempts a new backup after restore and reports that result separately. Old data remains in `recovery/` and safety archives remain pinned; there is no automatic cleanup of those generations yet.
 
 The current device's destination preferences, key configuration and job history are retained. They are not imported from the backup's source computer. Existing archives retain their original passphrases.
 

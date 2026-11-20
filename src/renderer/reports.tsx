@@ -85,8 +85,8 @@ export function ExportSettings({
       <h2 tabIndex={-1}>CSV exports</h2>
       <p className="body-copy">
         Export all records, including archived catalogue entries and cancelled purchases. Purchase
-        exports have one row per quantity/unit; follow-up history has one row per event. These
-        spreadsheets contain customer data and are not encrypted backups.
+        item exports contain one row per quantity/unit. Purchase summaries contain one total per
+        purchase. These spreadsheets contain customer data and are not encrypted backups.
       </p>
       <label htmlFor="csv-kind">Records to export</label>
       <select
@@ -97,7 +97,8 @@ export function ExportSettings({
       >
         <option value="customers">Customers</option>
         <option value="medicines">Medicines</option>
-        <option value="purchases">Purchases and items</option>
+        <option value="purchases">Purchase items</option>
+        <option value="purchaseTotals">Purchase summaries</option>
         <option value="followups">Follow-up cycles</option>
         <option value="followupHistory">Contact and follow-up history</option>
       </select>

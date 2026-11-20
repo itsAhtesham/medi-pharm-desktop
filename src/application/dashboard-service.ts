@@ -1,13 +1,62 @@
 import { OwnerService } from './owner-service';
-import { dashboardSchema } from '../contracts/dashboard';
+import type Database from 'better-sqlite3';
+import { dashboardSchema, type ValuePeriod } from '../contracts/dashboard';
 import { addDays, pharmacyDay } from '../domain/values';
 import { daysBetween } from '../domain/supply';
+export function readPurchaseValue(
+  db: Database.Database,
+  pharmacy: string,
+  today: string,
+  period: ValuePeriod,
+) {
+  const starts =
+    period === 'daily'
+      ? Array.from({ length: 7 }, (_, i) => addDays(today, i - 6))
+      : Array.from({ length: 12 }, (_, i) => {
+          const day = new Date(today.slice(0, 7) + '-01T00:00:00Z');
+          day.setUTCMonth(day.getUTCMonth() + i - 11);
+          return day.toISOString().slice(0, 10);
+        });
+  const buckets = new Map(starts.map((start) => [start, { start, total: 0n, count: 0 }]));
+  const rows = db
+    .prepare(
+      `SELECT purchase_date,total_amount_minor FROM purchases WHERE pharmacy_id=? AND status='active' AND purchase_date BETWEEN ? AND ?`,
+    )
+    .iterate(pharmacy, starts[0], today) as Iterable<{
+    purchase_date: string;
+    total_amount_minor: number;
+  }>;
+  let total = 0n;
+  let count = 0;
+  for (const row of rows) {
+    const start = period === 'daily' ? row.purchase_date : row.purchase_date.slice(0, 7) + '-01';
+    const bucket = buckets.get(start)!;
+    const amount = BigInt(row.total_amount_minor);
+    bucket.total += amount;
+    bucket.count++;
+    total += amount;
+    count++;
+  }
+  return {
+    period,
+    currency: 'INR',
+    start: starts[0],
+    end: today,
+    totalMinor: String(total),
+    count,
+    buckets: Array.from(buckets.values(), (b) => ({
+      start: b.start,
+      totalMinor: String(b.total),
+      count: b.count,
+    })),
+  };
+}
 export class DashboardService {
   constructor(
     private readonly owner: OwnerService,
     private readonly now = Date.now,
   ) {}
-  read() {
+  read(period: ValuePeriod = 'daily') {
     const owner = this.owner.requireOwner();
     const db = this.owner.store.db;
     const today = pharmacyDay(this.now());
@@ -90,6 +139,7 @@ export class DashboardService {
             owner.pharmacy_id,
             today,
           ),
+          purchaseValue: readPurchaseValue(db, owner.pharmacy_id, today, period),
           ...totals,
           ...endingTotals,
           purchasesByDay: Array.from({ length: 7 }, (_, i) => {

@@ -1,6 +1,9 @@
 import { z } from 'zod';
 import { dateSchema, followSchema } from './business';
 const count = z.number().int().nonnegative();
+export const periodSchema = z.enum(['daily', 'monthly']);
+export type ValuePeriod = z.infer<typeof periodSchema>;
+const exactMinor = z.string().regex(/^(0|[1-9]\d*)$/);
 export const dashboardSchema = z
   .object({
     today: dateSchema,
@@ -8,6 +11,18 @@ export const dashboardSchema = z
     activeCustomers: count,
     activeMedicines: count,
     purchasesToday: count,
+    purchaseValue: z.object({
+      period: periodSchema,
+      currency: z.literal('INR'),
+      start: dateSchema,
+      end: dateSchema,
+      totalMinor: exactMinor,
+      count,
+      buckets: z
+        .array(z.object({ start: dateSchema, totalMinor: exactMinor, count }))
+        .min(7)
+        .max(12),
+    }),
     dueCycles: count,
     dueCustomers: count,
     overdueCycles: count,

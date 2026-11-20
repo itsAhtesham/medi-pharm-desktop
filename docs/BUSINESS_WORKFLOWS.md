@@ -1,6 +1,6 @@
 # Pharmacy workflow walkthrough
 
-Use synthetic data in this development preview until Windows testing and the owner walkthrough are complete. All entries stay in the local pharmacy database. A purchase records medicines supplied by the pharmacy to a customer; it is not an inventory receipt or a priced invoice.
+Use synthetic data in this development preview until Windows testing and the owner walkthrough are complete. All entries stay in the local pharmacy database. A purchase records the medicines supplied to a customer and their INR value after the purchase discount.
 
 ## Customers and medicines
 
@@ -13,11 +13,12 @@ Lists and pickers have pages of 20. **View purchases** on a customer or medicine
 ## Purchases and supplies
 
 1. Open **Purchases → New purchase** and select a customer. Customer and medicine pickers also offer inline creation without discarding the purchase draft.
-2. Enter the purchase date and optional notes. Future purchase dates are refused. Add medicine rows with positive quantities, up to three decimal places, and units. The same medicine may appear in different units; duplicate medicine/unit rows must be combined.
+2. Enter the purchase date and optional notes. Future purchase dates are refused. Add medicine rows with positive quantities, up to three decimal places, and units. The same medicine may appear in different units; duplicate medicine/unit rows must be combined. Enter the total rupee amount for each row to at most two decimal places. An explicit zero is valid. Changing quantity keeps the entered row amount.
 3. Enter **Supply start date** and 1–365 **Days supplied** for each distinct medicine. The application does not infer dosage or duration from quantity. Start must be on or after purchase and must respect the chronological medicine chain.
 4. For a refill, explicitly choose **Extend** or **Replace**. Extend carries estimated remaining days; **Remaining days adjustment (optional)** replaces that estimate, including an explicit zero. Replace starts fresh. Each medicine has an independent reminder opt-in, initially off.
 5. Optionally choose a manual reminder date. Click anywhere inside a date field to open its calendar, or use keyboard entry. It cannot precede purchase; a date on/after run-out needs explicit confirmation.
-6. Select **Refresh supply preview**. Review carried days, run-out and reminder dates, then **Save**. Editing fields clears the preview. A concurrent saved change can invalidate it; refresh and review again.
+6. Review the subtotal and optionally enter a fixed discount in rupees. Select **Enter discount as percentage** to use a percentage from 0 to 100 with up to two decimal places. Switching modes clears the previous discount. The app rounds a percentage deduction once to the nearest paise, with half a paise rounded up.
+7. Select **Refresh supply preview**. Review the final amount, carried days, run-out and reminder dates, then **Save**. Editing fields clears the preview. A concurrent saved change can invalidate it; refresh and review again.
 
 Seven new days starting 1 November run out on 8 November. An 11-day refill starting 4 November carries four days in extend mode, runs out on 19 November and reminds on 16 November. Replace mode runs out on 15 November and reminds on 12 November. These are supply estimates based on the entered days, not medical dosing advice.
 

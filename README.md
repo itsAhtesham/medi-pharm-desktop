@@ -11,7 +11,7 @@ The app now has an **offline pharmacy workflow development preview**. Windows re
 Implemented:
 
 - Electron window, bundled React interface, validated IPC, and service-owned SQLite.
-- Neutral desktop shell with colourful high-contrast icons, horizontal navigation, grouped shortcuts, live dashboard metrics and purchase-count chart, compact record tables, and responsive quick actions.
+- Neutral desktop shell with colourful high-contrast icons, horizontal navigation, grouped shortcuts, live dashboard metrics, purchase counts and daily/monthly INR purchase values, compact record tables, and responsive quick actions.
 - Explicit empty-pharmacy setup, local owner login, lock/logout, password changes, and rotating offline recovery codes.
 - Salted, versioned scrypt hashes; persistent failed-login throttling; eight-hour in-memory sessions checked by the service.
 - Reviewed initial schema, migration checksum ledger, dataset identity, strict constraints and health checks.
@@ -24,11 +24,11 @@ Implemented:
 - Verified restore previews, fresh-profile restore, damaged-installation recovery, and backup passphrase/key rotation.
 - Customer and medicine create/edit/archive/restore, normalized search, pagination, and inline creation during purchase entry.
 - Clear/Save/Discard form controls and discard-or-continue confirmation when navigating away from unsaved drafts.
-- Purchases with exact quantities, multiple units, dated medicine snapshots, independent supply durations, refill carry-over, previews, corrections and cancellation.
+- Purchases with required INR row amounts, fixed or percentage discounts, exact quantities, multiple units, dated medicine snapshots, independent supply durations, refill carry-over, previews, corrections and cancellation.
 - Customer-grouped due/scheduled follow-ups, contact outcomes, next-contact dates, manual closure/reopening, and restoration of earlier cycle state after cancellation.
 - Customer/medicine purchase history, purchase details, readable audit history, and populated-data backup/restore validation.
 - Consolidated customer supply coverage, future supply starts, run-out estimates and current reminder state.
-- Filtered/all-record CSV exports for customers, medicines, purchases/items, follow-up cycles and contact history through native save dialogs.
+- Filtered/all-record CSV exports for customers, medicines, purchase items, purchase summaries, follow-up cycles and contact history through native save dialogs.
 - Unit, integration, recovery, and packaged desktop tests using temporary synthetic profiles.
 
 Version-to-version migration scripts, load verification and signed installers remain future work. Use test data only. The old prototype snapshot/key-store checks remain historical evidence and isolated storage tests; raw snapshots are no longer exposed by the app.

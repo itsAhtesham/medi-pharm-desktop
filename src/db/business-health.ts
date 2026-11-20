@@ -44,6 +44,15 @@ export function inspectBusiness(db: Database.Database) {
       .get()
   )
     throw new Error('Empty purchase.');
+  if (
+    db
+      .prepare(
+        `SELECT 1 FROM purchases p WHERE p.subtotal_minor <>
+    (SELECT SUM(i.amount_minor) FROM purchase_items i WHERE i.pharmacy_id=p.pharmacy_id AND i.purchase_id=p.id) LIMIT 1`,
+      )
+      .get()
+  )
+    throw new Error('Purchase subtotal differs from its item amounts.');
   type Supply = {
     id: string;
     customer_id: string;

@@ -64,7 +64,7 @@ port.on('message', (event) => {
           data = new SupplyReport(store).query(request.input);
           break;
         case 'dashboard':
-          data = new DashboardService(store).read();
+          data = new DashboardService(store).read(request.input);
           break;
         case 'businessQuery':
           data = business.query(request.input);

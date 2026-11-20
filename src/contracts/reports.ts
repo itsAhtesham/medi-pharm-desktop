@@ -7,17 +7,12 @@ const follow = {
   tab: z.enum(['due', 'scheduled', 'closed', 'all']).default('all'),
   customerId: z.uuid().optional(),
 };
+const purchases = { search, customerId: z.uuid().optional(), medicineId: z.uuid().optional() };
 export const csvInputSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('customers'), ...catalogue }).strict(),
   z.object({ kind: z.literal('medicines'), ...catalogue }).strict(),
-  z
-    .object({
-      kind: z.literal('purchases'),
-      search,
-      customerId: z.uuid().optional(),
-      medicineId: z.uuid().optional(),
-    })
-    .strict(),
+  z.object({ kind: z.literal('purchases'), ...purchases }).strict(),
+  z.object({ kind: z.literal('purchaseTotals'), ...purchases }).strict(),
   z.object({ kind: z.literal('followups'), ...follow }).strict(),
   z.object({ kind: z.literal('followupHistory'), ...follow }).strict(),
 ]);

@@ -1,4 +1,4 @@
-import { dashboardSchema, type DashboardData } from './dashboard';
+import { dashboardSchema, periodSchema, type ValuePeriod, type DashboardData } from './dashboard';
 import {
   csvServiceInputSchema,
   csvResultSchema,
@@ -194,7 +194,9 @@ export type WorkspaceStatus = z.infer<typeof workspaceStatusSchema>;
 export type AccountState = z.infer<typeof accountStateSchema>;
 const envelope = { version, id: z.uuid() };
 export const serviceRequestSchema = z.discriminatedUnion('command', [
-  z.object({ ...envelope, command: z.literal('dashboard') }).strict(),
+  z
+    .object({ ...envelope, command: z.literal('dashboard'), input: periodSchema.default('daily') })
+    .strict(),
   z.object({ ...envelope, command: z.literal('exportCsv'), input: csvServiceInputSchema }).strict(),
   z
     .object({ ...envelope, command: z.literal('customerSupplies'), input: supplyQuerySchema })
@@ -299,7 +301,7 @@ export const serviceMessageSchema = z.discriminatedUnion('type', [
 ]);
 
 export interface DesktopApi {
-  dashboard(): Promise<Result<DashboardData>>;
+  dashboard(period?: ValuePeriod): Promise<Result<DashboardData>>;
   exportCsv(input: CsvInput): Promise<Result<CsvResult>>;
   customerSupplies(input: SupplyQuery): Promise<Result<SupplyResult>>;
   businessQuery(input: BusinessQuery): Promise<Result<BusinessData>>;

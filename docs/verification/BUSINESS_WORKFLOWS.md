@@ -2,6 +2,8 @@
 
 Implementation follows `f035e92`. The commit introducing this report identifies the source under test. Development verification uses Linux x64, Node 24.15.0, pnpm 10.33.4 and the pinned Electron/native SQLite package. Windows 10/11 verification remains open.
 
+For the subsequent fresh-profile purchase amounts implementation, see the [purchase amounts verification results](../PURCHASE_AMOUNTS_IMPLEMENTATION_PLAN.md#10-verification-results).
+
 ## Implemented scope
 
 - Customer/medicine create, edit, archive, restore, normalized search and stable 20-record pagination. Shared customer phone numbers are permitted; medicine identity includes normalized name/strength/form across active and archived records.

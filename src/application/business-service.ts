@@ -1,4 +1,5 @@
-import { randomUUID } from 'node:crypto';
+import { calculatePurchaseMoney, parseMoneyMinor } from '../domain/money';
+import { createHash, randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { OwnerService } from './owner-service';
 import { ApplicationFailure } from './failure';
@@ -254,7 +255,20 @@ export class BusinessService {
         hasPrevious: before.length > 0,
       });
     }
-    return previewSchema.parse({ revision: this.revision(), supplies });
+    const meta = this.db.prepare('SELECT dataset_id,revision FROM app_meta WHERE id=1').get() as {
+      dataset_id: string;
+      revision: number;
+    };
+    const fingerprint = createHash('sha256')
+      .update(JSON.stringify([meta.dataset_id, meta.revision, p]))
+      .digest('hex');
+    let money: Preview['money'];
+    try {
+      money = calculatePurchaseMoney(p.items, p.pricing.discount);
+    } catch (error) {
+      invalid((error as Error).message);
+    }
+    return previewSchema.parse({ revision: meta.revision, supplies, fingerprint, money });
   }
   save(raw: BusinessMutation) {
     const input = parse(businessMutationSchema, raw);
@@ -352,18 +366,6 @@ export class BusinessService {
               (!old || old.version !== input.expectedVersion || old.status !== 'active')
             )
               conflict();
-            if (input.kind === 'purchase') {
-              const {
-                kind: _kind,
-                requestId: _request,
-                expectedRevision: _revision,
-                ...draft
-              } = input;
-              void _kind;
-              void _request;
-              void _revision;
-              this.validatePurchase(draft);
-            }
             const pairs = new Map<string, [string, string]>();
             const add = (c: string, m: string) => pairs.set(`${c}|${m}`, [c, m]);
             if (old)
@@ -377,7 +379,18 @@ export class BusinessService {
                 "UPDATE purchases SET status='cancelled',version=?,updated_by=?,updated_at=? WHERE id=?",
               ).run(version, owner.id, now, id);
             else {
+              const {
+                kind: _kind,
+                requestId: _request,
+                expectedRevision: _revision,
+                previewFingerprint,
+                ...draft
+              } = input;
+              const preview = this.validatePurchase(draft);
+              if (preview.fingerprint !== previewFingerprint)
+                conflict('Purchase details changed. Refresh the preview before saving.');
               const v = {
+                ...preview.money,
                 id,
                 pharmacy: owner.pharmacy_id,
                 customer: input.customerId,
@@ -389,11 +402,11 @@ export class BusinessService {
               };
               if (old)
                 db.prepare(
-                  'UPDATE purchases SET customer_id=@customer,purchase_date=@date,notes=@notes,version=@version,updated_by=@actor,updated_at=@now WHERE id=@id',
+                  'UPDATE purchases SET currency_code=@currency_code,subtotal_minor=@subtotal_minor,discount_type=@discount_type,discount_percent_bps=@discount_percent_bps,discount_amount_minor=@discount_amount_minor,total_amount_minor=@total_amount_minor,customer_id=@customer,purchase_date=@date,notes=@notes,version=@version,updated_by=@actor,updated_at=@now WHERE id=@id',
                 ).run(v);
               else
                 db.prepare(
-                  "INSERT INTO purchases(id,pharmacy_id,customer_id,sequence,purchase_date,notes,status,version,created_by,updated_by,created_at,updated_at) VALUES (@id,@pharmacy,@customer,@sequence,@date,@notes,'active',@version,@actor,@actor,@now,@now)",
+                  "INSERT INTO purchases(currency_code,subtotal_minor,discount_type,discount_percent_bps,discount_amount_minor,total_amount_minor,id,pharmacy_id,customer_id,sequence,purchase_date,notes,status,version,created_by,updated_by,created_at,updated_at) VALUES (@currency_code,@subtotal_minor,@discount_type,@discount_percent_bps,@discount_amount_minor,@total_amount_minor,@id,@pharmacy,@customer,@sequence,@date,@notes,'active',@version,@actor,@actor,@now,@now)",
                 ).run({ ...v, sequence: nextPurchaseNumber(db, owner.pharmacy_id) });
               db.prepare('DELETE FROM purchase_items WHERE purchase_id=?').run(id);
               input.items.forEach((item, position) => {
@@ -402,7 +415,7 @@ export class BusinessService {
                   .get(item.medicineId) as Medicine;
                 const snapshot = old?.items.find((i) => i.medicine_id === item.medicineId);
                 db.prepare(
-                  'INSERT INTO purchase_items(id,pharmacy_id,purchase_id,medicine_id,name_snapshot,strength_snapshot,form_snapshot,quantity_milli,unit,position) VALUES (?,?,?,?,?,?,?,?,?,?)',
+                  'INSERT INTO purchase_items(id,pharmacy_id,purchase_id,medicine_id,name_snapshot,strength_snapshot,form_snapshot,quantity_milli,unit,amount_minor,position) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
                 ).run(
                   randomUUID(),
                   owner.pharmacy_id,
@@ -413,6 +426,7 @@ export class BusinessService {
                   snapshot?.form_snapshot ?? med.form,
                   quantityMilli(item.quantity),
                   item.unit,
+                  parseMoneyMinor(item.amount),
                   position,
                 );
               });

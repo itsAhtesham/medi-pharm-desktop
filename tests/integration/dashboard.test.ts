@@ -6,7 +6,8 @@ import { randomUUID } from 'node:crypto';
 import { OwnerService } from '../../src/application/owner-service';
 import { PharmacyDatabase } from '../../src/db/pharmacy-database';
 import { BusinessService } from '../../src/application/business-service';
-import { DashboardService } from '../../src/application/dashboard-service';
+import Database from 'better-sqlite3';
+import { readPurchaseValue, DashboardService } from '../../src/application/dashboard-service';
 import type { PurchaseDraft } from '../../src/contracts/business';
 let root: string, owner: OwnerService, business: BusinessService, dashboard: DashboardService;
 const today = '2026-11-20';
@@ -66,9 +67,10 @@ function purchase(
     date,
     notes: 'Supply note',
     reason: '',
+    pricing: { currencyCode: 'INR' as const, discount: { type: 'percentage', percent: '12.50' } },
     items: [
-      { medicineId, quantity: '1.250', unit: 'tablets' },
-      { medicineId, quantity: '2', unit: 'strips' },
+      { medicineId, amount: '125.50', quantity: '1.250', unit: 'tablets' },
+      { medicineId, amount: '74.50', quantity: '2', unit: 'strips' },
     ],
     supplies: [
       {
@@ -83,11 +85,13 @@ function purchase(
       },
     ],
   };
+  const preview = business.preview(p);
   return business.save({
     ...p,
     kind: 'purchase',
     requestId: randomUUID(),
-    expectedRevision: business.preview(p).revision,
+    previewFingerprint: preview.fingerprint,
+    expectedRevision: preview.revision,
   });
 }
 function cancel(id: string) {
@@ -166,6 +170,12 @@ it('counts active purchases and catalogs, separates customers from reminders, an
     endingCustomers: 1,
   });
   expect(d.purchasesByDay.reduce((n, r) => n + r.count, 0)).toBe(2);
+  expect(d.purchaseValue).toMatchObject({ period: 'daily', totalMinor: '35000', count: 2 });
+  expect(d.purchaseValue.buckets.at(-1)).toEqual({ start: today, count: 1, totalMinor: '17500' });
+  const month = dashboard.read('monthly').purchaseValue;
+  expect(month.start).toBe('2025-12-01');
+  expect(month.buckets).toHaveLength(12);
+  expect(month.buckets.at(-1)).toEqual({ start: '2026-11-01', count: 2, totalMinor: '35000' });
   expect(d.due.map((r) => r.customer_id)).toEqual([c, c]);
   expect(d.recent).toHaveLength(5);
   expect(d.recent.some((r) => r.action === 'business.cancel')).toBe(true);
@@ -219,4 +229,27 @@ it('caps preview rows without truncating totals and respects snoozed/closed remi
   expect(d.scheduledCycles).toBe(1);
   expect(d.upcoming[0].next_date).toBe('2026-11-25');
   expect(d.endingSupplies).toBe(8);
+});
+
+it('keeps large period totals exact across leap-day and year boundaries', () => {
+  const db = new Database(':memory:');
+  try {
+    // Generate bounded purchase totals lazily so the fixture fits in memory.
+    db.exec(`CREATE VIEW purchases AS WITH RECURSIVE series(n) AS (
+      SELECT 1 UNION ALL SELECT n+1 FROM series WHERE n<900721
+    ) SELECT 'test' AS pharmacy_id, 'active' AS status, '2024-02-29' AS purchase_date,
+      9999999999 AS total_amount_minor FROM series`);
+    const result = readPurchaseValue(db, 'test', '2024-03-01', 'monthly');
+    expect(result.start).toBe('2023-04-01');
+    const expected = String(900721n * 9999999999n);
+    expect(result.totalMinor).toBe(expected);
+    expect(result.buckets.at(-2)).toEqual({
+      start: '2024-02-01',
+      count: 900721,
+      totalMinor: expected,
+    });
+    expect(result.buckets.at(-1)).toEqual({ start: '2024-03-01', count: 0, totalMinor: '0' });
+  } finally {
+    db.close();
+  }
 });

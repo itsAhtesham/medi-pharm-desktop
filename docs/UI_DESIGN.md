@@ -23,6 +23,7 @@ Every number comes from the authenticated local database in one read transaction
 | --- | --- |
 | Active customers / medicines | Unarchived catalog records |
 | Purchases today | Active customer purchases dated today in Asia/Kolkata; cancelled purchases excluded |
+| Purchase value | Total after discounts on active purchases, shown daily over seven dates or monthly over twelve calendar months. The table gives exact INR amounts and purchase counts. |
 | Seven-day activity | Active purchase counts for today and the preceding six dates, including zero-count dates; no revenue estimate |
 | Ending within five days | One effective supply per customer/medicine with run-out between today and today + 5, inclusive; future-starting refills do not hide current coverage |
 | Overdue / due / scheduled | Open reminder cycles before today / on or before today / after today; closed and superseded cycles excluded |

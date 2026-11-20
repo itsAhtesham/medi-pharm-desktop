@@ -1,3 +1,9 @@
+import {
+  calculatePurchaseMoney,
+  formatMoneyMinor,
+  formatDecimalMinor,
+  type Discount,
+} from '../domain/money';
 import { DateInput } from './date-input';
 import { BackButton } from './back-button';
 import { DraftNavigationDialog } from './draft-navigation-dialog';
@@ -61,6 +67,7 @@ const freshPurchase = (): PurchaseDraft => ({
   date: pharmacyDay(Date.now()),
   notes: '',
   reason: '',
+  pricing: { currencyCode: 'INR', discount: { type: 'none' } },
   items: [],
   supplies: [],
 });
@@ -375,7 +382,7 @@ export function BusinessWorkspace({
   function addMedicine(p: PurchaseDraft, id: string): PurchaseDraft {
     return {
       ...p,
-      items: [...p.items, { medicineId: id, quantity: '1', unit: 'tablets' }],
+      items: [...p.items, { medicineId: id, quantity: '1', unit: 'tablets', amount: '' }],
       supplies: p.supplies.some((s) => s.medicineId === id)
         ? p.supplies
         : [
@@ -413,9 +420,19 @@ export function BusinessWorkspace({
         date: p.purchase_date,
         notes: p.notes,
         reason: '',
+        pricing: {
+          currencyCode: p.currency_code,
+          discount:
+            p.discount_type === 'percentage'
+              ? { type: 'percentage', percent: formatDecimalMinor(p.discount_percent_bps!) }
+              : p.discount_type === 'fixed'
+                ? { type: 'fixed', amount: formatDecimalMinor(p.discount_amount_minor) }
+                : { type: 'none' },
+        },
         items: p.items.map((i) => ({
           medicineId: i.medicine_id,
           quantity: String(i.quantity_milli / 1000),
+          amount: formatDecimalMinor(i.amount_minor),
           unit: i.unit,
         })),
         supplies: p.supplies.map((s) => ({
@@ -756,6 +773,7 @@ export function BusinessWorkspace({
                   </Field>
                 </div>
                 <h3>Medicine quantities</h3>
+                <p className="field-help">Enter the total amount for each medicine row.</p>
                 {purchase.items.map((item, i) => (
                   <div
                     className="quantity-row"
@@ -794,6 +812,20 @@ export function BusinessWorkspace({
                           <option key={u}>{u}</option>
                         ))}
                       </select>
+                    </Field>
+                    <Field label="Amount (₹)">
+                      <input
+                        inputMode="decimal"
+                        value={item.amount}
+                        onChange={(e) =>
+                          changePurchase({
+                            ...purchase,
+                            items: purchase.items.map((row, n) =>
+                              n === i ? { ...row, amount: e.target.value } : row,
+                            ),
+                          })
+                        }
+                      />
                     </Field>
                     <button
                       className="text-button"
@@ -945,9 +977,16 @@ export function BusinessWorkspace({
                   Corrections recalculate later refills. The previous details remain in audit
                   history.
                 </p>
+                <PurchasePricing
+                  draft={purchase}
+                  preview={preview}
+                  onDiscount={(discount) =>
+                    changePurchase({ ...purchase, pricing: { ...purchase.pricing, discount } })
+                  }
+                />
                 <p className="field-help">
-                  First, click <strong>Refresh supply preview</strong> and review the supply and
-                  reminder dates. Then click <strong>Save</strong>. If you change any details,
+                  First, click <strong>Refresh supply preview</strong> and review the amount, supply
+                  and reminder dates. Then click <strong>Save</strong>. If you change any details,
                   refresh the preview again before saving.
                 </p>
                 <div className="business-actions">
@@ -980,6 +1019,7 @@ export function BusinessWorkspace({
                         kind: 'purchase',
                         requestId: crypto.randomUUID(),
                         expectedRevision: preview.revision,
+                        previewFingerprint: preview.fingerprint,
                       })
                     }
                   >
@@ -1186,6 +1226,7 @@ export function BusinessWorkspace({
             <div className="business-actions">
               <CsvButton
                 disabled={!enabled}
+                label={kind === 'purchases' ? 'Export purchase items' : undefined}
                 selection={
                   kind === 'customers' || kind === 'medicines'
                     ? { kind, search, status: archived ? 'archived' : 'active' }
@@ -1199,6 +1240,13 @@ export function BusinessWorkspace({
                       : { kind, search, tab }
                 }
               />
+              {kind === 'purchases' && (
+                <CsvButton
+                  disabled={!enabled}
+                  selection={{ kind: 'purchaseTotals', search }}
+                  label="Export purchase summaries"
+                />
+              )}
               {kind === 'followups' && (
                 <CsvButton
                   disabled={!enabled}
@@ -1458,6 +1506,31 @@ export function BusinessWorkspace({
             }}
           />
           <h2 tabIndex={-1}>Purchase history · {historyFilter.label}</h2>
+          {historyFilter.medicineId && (
+            <p className="field-help">
+              Exports include every item in each purchase containing this medicine.
+            </p>
+          )}
+          <div className="business-actions">
+            <CsvButton
+              disabled={!enabled}
+              selection={{
+                kind: 'purchases',
+                customerId: historyFilter.customerId,
+                medicineId: historyFilter.medicineId,
+              }}
+              label="Export purchase items"
+            />
+            <CsvButton
+              disabled={!enabled}
+              selection={{
+                kind: 'purchaseTotals',
+                customerId: historyFilter.customerId,
+                medicineId: historyFilter.medicineId,
+              }}
+              label="Export purchase summaries"
+            />
+          </div>
           <RelatedPurchases
             filter={historyFilter}
             revision={data?.revision ?? 0}
@@ -1518,9 +1591,10 @@ export function BusinessWorkspace({
           {detail.items.map((i, n) => (
             <p key={n}>
               {i.name_snapshot} {i.strength_snapshot} {i.form_snapshot} — {i.quantity_milli / 1000}{' '}
-              {i.unit}
+              {i.unit} · {formatMoneyMinor(i.amount_minor)}
             </p>
           ))}
+          <MoneySummary money={detail} />
           {detail.supplies.map((s) => (
             <p key={s.id}>
               Start {s.start_date} · {s.new_days} new + {s.remaining_used} carried days · Run-out{' '}
@@ -1591,6 +1665,88 @@ export function BusinessWorkspace({
     </div>
   );
 }
+function MoneySummary({
+  money,
+  children,
+}: {
+  money: Preview['money'] | null;
+  children?: React.ReactNode;
+}) {
+  const discountLabel =
+    money?.discount_type === 'percentage'
+      ? formatDecimalMinor(money.discount_percent_bps!) + '%'
+      : money?.discount_type === 'fixed'
+        ? 'fixed'
+        : 'none';
+  return (
+    <div className="purchase-money">
+      <div>
+        Subtotal <strong>{money ? formatMoneyMinor(money.subtotal_minor) : '—'}</strong>
+      </div>
+      {children}
+      <div>
+        Discount applied {money && '(' + discountLabel + ')'}{' '}
+        <strong>{money ? formatMoneyMinor(money.discount_amount_minor) : '—'}</strong>
+      </div>
+      <div>
+        Total amount <strong>{money ? formatMoneyMinor(money.total_amount_minor) : '—'}</strong>
+      </div>
+    </div>
+  );
+}
+function PurchasePricing({
+  draft,
+  preview,
+  onDiscount,
+}: {
+  draft: PurchaseDraft;
+  preview: Preview | null;
+  onDiscount: (discount: Discount) => void;
+}) {
+  const discount = draft.pricing.discount;
+  const percentage = discount.type === 'percentage';
+  let money = preview?.money ?? null;
+  let message = '';
+  if (!money) {
+    try {
+      money = calculatePurchaseMoney(draft.items, discount);
+    } catch (error) {
+      message = (error as Error).message;
+    }
+  }
+  return (
+    <section aria-label="Purchase pricing">
+      <h3>{preview ? 'Previewed purchase amount' : 'Purchase amount'}</h3>
+      <MoneySummary money={money}>
+        <Field label={percentage ? 'Discount (%)' : 'Discount (₹)'}>
+          <input
+            inputMode="decimal"
+            value={percentage ? discount.percent : discount.type === 'fixed' ? discount.amount : ''}
+            onChange={(e) =>
+              onDiscount(
+                percentage
+                  ? { type: 'percentage', percent: e.target.value }
+                  : { type: 'fixed', amount: e.target.value },
+              )
+            }
+          />
+        </Field>
+        <label className="checkbox-label">
+          <input
+            type="checkbox"
+            checked={percentage}
+            onChange={(e) =>
+              onDiscount(e.target.checked ? { type: 'percentage', percent: '' } : { type: 'none' })
+            }
+          />{' '}
+          Enter discount as percentage
+        </label>
+        <small>Switching modes clears the discount input.</small>
+      </MoneySummary>
+      {message && <p className="field-help">{message}</p>}
+    </section>
+  );
+}
 function PurchaseList({
   purchases,
   onSelect,
@@ -1608,6 +1764,7 @@ function PurchaseList({
             <th>Date</th>
             <th>Status</th>
             <th>Quantity rows</th>
+            <th>Total amount</th>
             <th>Actions</th>
           </tr>
         </thead>
@@ -1623,6 +1780,7 @@ function PurchaseList({
                 </span>
               </td>
               <td>{p.items.length}</td>
+              <td>{formatMoneyMinor(p.total_amount_minor)}</td>
               <td>
                 <button className="secondary" onClick={() => onSelect(p)}>
                   View purchase #{p.sequence}
@@ -1632,7 +1790,7 @@ function PurchaseList({
           ))}
           {!purchases.length && (
             <tr>
-              <td colSpan={6} className="empty-cell">
+              <td colSpan={7} className="empty-cell">
                 No purchases match this view.
               </td>
             </tr>
@@ -1750,6 +1908,14 @@ function AuditHistory({ id }: { id: string }) {
   );
 }
 
+function formatAuditField(key: string, value: unknown): unknown {
+  if (typeof value !== 'number') return value;
+  if (key.endsWith('_minor')) return formatMoneyMinor(value);
+  if (key === 'discount_percent_bps') return formatDecimalMinor(value) + '%';
+  if (key === 'quantity_milli') return value / 1000;
+  if (key.endsWith('_at')) return new Date(value).toLocaleString();
+  return value;
+}
 function AuditValue({ value }: { value: unknown }): React.ReactNode {
   if (value === null || value === undefined) return <span>—</span>;
   if (Array.isArray(value))
@@ -1785,18 +1951,10 @@ function AuditValue({ value }: { value: unknown }): React.ReactNode {
               <dt>
                 {k === 'quantity_milli'
                   ? 'Quantity'
-                  : k.replace(/_snapshot$/, '').replaceAll('_', ' ')}
+                  : k.replace(/_(snapshot|minor|bps)$/, '').replaceAll('_', ' ')}
               </dt>
               <dd>
-                <AuditValue
-                  value={
-                    k === 'quantity_milli'
-                      ? Number(v) / 1000
-                      : k.endsWith('_at') && typeof v === 'number'
-                        ? new Date(v).toLocaleString()
-                        : v
-                  }
-                />
+                <AuditValue value={formatAuditField(k, v)} />
               </dd>
             </div>
           ))}

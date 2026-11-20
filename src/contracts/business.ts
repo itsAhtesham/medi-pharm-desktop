@@ -1,3 +1,4 @@
+import { MAX_MONEY_MINOR } from '../domain/money';
 import { z } from 'zod';
 import { businessDate, quantityMilli } from '../domain/values';
 export const textKey = (value: string) =>
@@ -64,8 +65,23 @@ export const medicineInputSchema = z
     archived: z.boolean(),
   })
   .strict();
+const minor = z.number().int().min(0).max(MAX_MONEY_MINOR);
+const fingerprint = z.string().regex(/^[a-f0-9]{64}$/);
+const discountInputSchema = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('none') }).strict(),
+  z.object({ type: z.literal('fixed'), amount: z.string().trim() }).strict(),
+  z.object({ type: z.literal('percentage'), percent: z.string().trim() }).strict(),
+]);
+const moneySchema = z.object({
+  currency_code: z.literal('INR'),
+  subtotal_minor: minor,
+  discount_type: z.enum(['none', 'fixed', 'percentage']),
+  discount_percent_bps: z.number().int().min(1).max(10000).nullable(),
+  discount_amount_minor: minor,
+  total_amount_minor: minor,
+});
 export const itemInputSchema = z
-  .object({ medicineId: z.uuid(), quantity, unit: z.enum(units) })
+  .object({ medicineId: z.uuid(), quantity, amount: z.string().trim(), unit: z.enum(units) })
   .strict();
 export const supplyInputSchema = z
   .object({
@@ -87,12 +103,14 @@ export const purchaseDraftSchema = z
     date: dateSchema,
     notes,
     reason: notes,
+    pricing: z.object({ currencyCode: z.literal('INR'), discount: discountInputSchema }).strict(),
     items: z.array(itemInputSchema).min(1).max(50),
     supplies: z.array(supplyInputSchema).min(1).max(50),
   })
   .strict();
 export const purchaseInputSchema = purchaseDraftSchema.extend({
   kind: z.literal('purchase'),
+  previewFingerprint: fingerprint,
   requestId: z.uuid(),
   expectedRevision: z.number().int().nonnegative(),
 });
@@ -155,6 +173,7 @@ export const itemSchema = z.object({
   strength_snapshot: z.string(),
   form_snapshot: z.string(),
   quantity_milli: z.number().int(),
+  amount_minor: minor,
   unit: z.enum(units),
 });
 export const supplySchema = z.object({
@@ -169,7 +188,7 @@ export const supplySchema = z.object({
   reminder_enabled: z.number(),
   manual_reminder_date: dateSchema.nullable(),
 });
-export const purchaseSchema = z.object({
+export const purchaseSchema = moneySchema.extend({
   id: z.uuid(),
   customer_id: z.uuid(),
   customer_name: z.string(),
@@ -219,6 +238,8 @@ export const queryResultSchema = z
   .strict();
 export const previewSchema = z
   .object({
+    fingerprint,
+    money: moneySchema,
     revision: z.number().int(),
     supplies: z.array(
       z.object({

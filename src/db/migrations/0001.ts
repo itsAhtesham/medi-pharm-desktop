@@ -79,6 +79,12 @@ CREATE TABLE purchases (
   pharmacy_id TEXT NOT NULL,
   customer_id TEXT NOT NULL,
   sequence INTEGER NOT NULL CHECK(sequence>0),
+  currency_code TEXT NOT NULL CHECK(currency_code='INR'),
+  subtotal_minor INTEGER NOT NULL CHECK(subtotal_minor BETWEEN 0 AND 9999999999),
+  discount_type TEXT NOT NULL CHECK(discount_type IN ('none','fixed','percentage')),
+  discount_percent_bps INTEGER,
+  discount_amount_minor INTEGER NOT NULL CHECK(discount_amount_minor BETWEEN 0 AND subtotal_minor),
+  total_amount_minor INTEGER NOT NULL CHECK(total_amount_minor=subtotal_minor-discount_amount_minor),
   purchase_date TEXT NOT NULL CHECK(purchase_date GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'),
   notes TEXT NOT NULL DEFAULT '',
   status TEXT NOT NULL CHECK(status IN ('active','cancelled')),
@@ -88,6 +94,12 @@ CREATE TABLE purchases (
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL,
   UNIQUE(pharmacy_id,id),
+  CHECK(
+    (discount_type='none' AND discount_percent_bps IS NULL AND discount_amount_minor=0) OR
+    (discount_type='fixed' AND discount_percent_bps IS NULL AND discount_amount_minor>0) OR
+    (discount_type='percentage' AND discount_percent_bps IS NOT NULL AND discount_percent_bps BETWEEN 1 AND 10000
+      AND discount_amount_minor=(subtotal_minor*discount_percent_bps+5000)/10000)
+  ),
   UNIQUE(pharmacy_id,sequence),
   FOREIGN KEY(pharmacy_id,customer_id) REFERENCES customers(pharmacy_id,id),
   FOREIGN KEY(pharmacy_id,created_by) REFERENCES users(pharmacy_id,id),
@@ -104,6 +116,7 @@ CREATE TABLE purchase_items (
   name_snapshot TEXT NOT NULL,
   strength_snapshot TEXT NOT NULL,
   form_snapshot TEXT NOT NULL,
+  amount_minor INTEGER NOT NULL CHECK(amount_minor BETWEEN 0 AND 9999999999),
   quantity_milli INTEGER NOT NULL CHECK(quantity_milli BETWEEN 1 AND 999999000),
   unit TEXT NOT NULL CHECK(unit IN ('tablets','strips','capsules','bottles','packs','tubes','sachets','other')),
   position INTEGER NOT NULL CHECK(position>=0),
