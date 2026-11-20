@@ -1351,3 +1351,7 @@ td {
   font-weight: 600;
   min-height: 34px;
 }
+
+input[type='date']:not(:disabled):not([readonly]) {
+  cursor: pointer;
+}

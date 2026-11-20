@@ -1,3 +1,4 @@
+import { DateInput } from './date-input';
 import type { NavigationIntent } from './navigation';
 import { CsvButton, CustomerSupplies } from './reports';
 import React, { useEffect, useRef, useState, useId } from 'react';
@@ -637,8 +638,7 @@ export function BusinessWorkspace({
                 />
                 <div className="business-grid">
                   <Field label="Purchase date">
-                    <input
-                      type="date"
+                    <DateInput
                       max={pharmacyDay(Date.now())}
                       value={purchase.date}
                       onChange={(e) => changePurchase({ ...purchase, date: e.target.value })}
@@ -654,9 +654,14 @@ export function BusinessWorkspace({
                 </div>
                 <h3>Medicine quantities</h3>
                 {purchase.items.map((item, i) => (
-                  <div className="quantity-row" key={i}>
+                  <div
+                    className="quantity-row"
+                    key={i}
+                    role="group"
+                    aria-label={`Quantity row for ${labels[item.medicineId]}`}
+                  >
                     <strong>{labels[item.medicineId]}</strong>
-                    <Field label={`Quantity ${i + 1}`}>
+                    <Field label="Quantity">
                       <input
                         inputMode="decimal"
                         value={item.quantity}
@@ -670,7 +675,7 @@ export function BusinessWorkspace({
                         }
                       />
                     </Field>
-                    <Field label={`Unit ${i + 1}`}>
+                    <Field label="Unit">
                       <select
                         value={item.unit}
                         onChange={(e) =>
@@ -729,18 +734,21 @@ export function BusinessWorkspace({
                     );
                   const estimate = preview?.supplies.find((v) => v.medicineId === s.medicineId);
                   return (
-                    <section className="supply-card" key={s.medicineId}>
+                    <section
+                      className="supply-card"
+                      key={s.medicineId}
+                      aria-label={`Supply for ${labels[s.medicineId]}`}
+                    >
                       <h4>{labels[s.medicineId]}</h4>
                       <div className="business-grid">
-                        <Field label={`Supply start ${index + 1}`}>
-                          <input
-                            type="date"
+                        <Field label="Supply start date">
+                          <DateInput
                             min={purchase.date}
                             value={s.start}
                             onChange={(e) => update({ start: e.target.value })}
                           />
                         </Field>
-                        <Field label={`New days ${index + 1}`}>
+                        <Field label="Days supplied">
                           <input
                             type="number"
                             min={1}
@@ -749,7 +757,7 @@ export function BusinessWorkspace({
                             onChange={(e) => update({ days: Number(e.target.value) })}
                           />
                         </Field>
-                        <Field label={`Refill choice ${index + 1}`}>
+                        <Field label="Refill choice">
                           <select
                             value={s.mode ?? ''}
                             onChange={(e) =>
@@ -759,12 +767,14 @@ export function BusinessWorkspace({
                               })
                             }
                           >
-                            <option value="">Choose if a previous supply exists</option>
+                            <option value="" disabled hidden>
+                              Choose if a previous supply exists
+                            </option>
                             <option value="extend">Extend remaining supply</option>
                             <option value="replace">Replace — start fresh</option>
                           </select>
                         </Field>
-                        <Field label={`Remaining adjustment ${index + 1} (optional)`}>
+                        <Field label="Remaining days adjustment (optional)">
                           <input
                             type="number"
                             min={0}
@@ -790,9 +800,8 @@ export function BusinessWorkspace({
                       </label>
                       {s.reminder && (
                         <>
-                          <Field label={`Manual reminder date ${index + 1} (optional)`}>
-                            <input
-                              type="date"
+                          <Field label="Manual reminder date (optional)">
+                            <DateInput
                               min={purchase.date}
                               value={s.manualDate ?? ''}
                               onChange={(e) => update({ manualDate: e.target.value || null })}
@@ -938,8 +947,7 @@ export function BusinessWorkspace({
                 )}
                 {(editor.action === 'contact' || editor.action === 'snooze') && (
                   <Field label="Next contact date (optional for contact)">
-                    <input
-                      type="date"
+                    <DateInput
                       min={pharmacyDay(Date.now())}
                       required={editor.action === 'snooze'}
                       value={editor.date}

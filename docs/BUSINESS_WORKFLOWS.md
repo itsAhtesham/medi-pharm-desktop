@@ -14,9 +14,9 @@ Lists and pickers have pages of 20. **View purchases** on a customer or medicine
 
 1. Open **Purchases → New purchase** and select a customer. Customer and medicine pickers also offer inline creation without discarding the purchase draft.
 2. Enter the purchase date and optional notes. Future purchase dates are refused. Add medicine rows with positive quantities, up to three decimal places, and units. The same medicine may appear in different units; duplicate medicine/unit rows must be combined.
-3. Enter a supply start and 1–365 new days for each distinct medicine. The application does not infer dosage or duration from quantity. Start must be on or after purchase and must respect the chronological medicine chain.
-4. For a refill, explicitly choose **Extend** or **Replace**. Extend carries estimated remaining days; an optional adjustment replaces that estimate, including an explicit zero. Replace starts fresh. Each medicine has an independent reminder opt-in, initially off.
-5. Optionally choose a manual reminder date. It cannot precede purchase; a date on/after run-out needs explicit confirmation.
+3. Enter **Supply start date** and 1–365 **Days supplied** for each distinct medicine. The application does not infer dosage or duration from quantity. Start must be on or after purchase and must respect the chronological medicine chain.
+4. For a refill, explicitly choose **Extend** or **Replace**. Extend carries estimated remaining days; **Remaining days adjustment (optional)** replaces that estimate, including an explicit zero. Replace starts fresh. Each medicine has an independent reminder opt-in, initially off.
+5. Optionally choose a manual reminder date. Click anywhere inside a date field to open its calendar, or use keyboard entry. It cannot precede purchase; a date on/after run-out needs explicit confirmation.
 6. Select **Refresh supply preview**. Review carried days, run-out and reminder dates, then **Save purchase**. Editing fields clears the preview. A concurrent saved change can invalidate it; refresh and review again.
 
 Seven new days starting 1 November run out on 8 November. An 11-day refill starting 4 November carries four days in extend mode, runs out on 19 November and reminds on 16 November. Replace mode runs out on 15 November and reminds on 12 November. These are supply estimates based on the entered days, not medical dosing advice.

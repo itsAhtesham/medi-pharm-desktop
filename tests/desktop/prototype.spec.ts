@@ -501,8 +501,8 @@ test('customer, medicine, purchase, contact, refill and cancellation work throug
   await page.getByLabel('Medicine name', { exact: true }).fill('Test medicine');
   await page.getByLabel('Strength', { exact: true }).fill('10 mg');
   await page.getByRole('button', { name: 'Save medicine', exact: true }).click();
-  await page.getByLabel('Quantity 1', { exact: true }).fill('1.250');
-  await page.getByLabel('New days 1', { exact: true }).fill('1');
+  await page.getByLabel('Quantity', { exact: true }).fill('1.250');
+  await page.getByLabel('Days supplied', { exact: true }).fill('1');
   await page.getByLabel('Enable reminder for Test medicine · 10 mg · tablet').check();
   await page.getByRole('button', { name: 'Refresh supply preview' }).click();
   await expect(page.locator('.supply-estimate')).toContainText('Carry 0 days');
@@ -534,8 +534,8 @@ test('customer, medicine, purchase, contact, refill and cancellation work throug
   await page.getByLabel('Follow-up view').selectOption('scheduled');
   await expect(page.locator('.follow-row')).toContainText('Awaiting refill');
   await page.getByRole('button', { name: 'Record refill', exact: true }).click();
-  await page.getByLabel('New days 1', { exact: true }).fill('3');
-  await page.getByLabel('Refill choice 1', { exact: true }).selectOption('extend');
+  await page.getByLabel('Days supplied', { exact: true }).fill('3');
+  await page.getByLabel('Refill choice', { exact: true }).selectOption('extend');
   await page.getByLabel('Enable reminder for Test medicine 10 mg tablet').check();
   await page.getByRole('button', { name: 'Refresh supply preview' }).click();
   await expect(page.locator('.supply-estimate')).toContainText('Carry 1 days');
@@ -1023,4 +1023,96 @@ test('an uncertain save keeps the submitted form frozen instead of allowing navi
   await login(page);
   await expect(page.getByLabel('Customer name', { exact: true })).toHaveValue('Frozen submission');
   await expect(page.getByRole('button', { name: 'Medicines', exact: true })).toBeDisabled();
+});
+
+test('purchase fields stay independent without numbered labels and date fields open their native picker', async () => {
+  const page = await launch();
+  await setup(page);
+  await page.getByRole('button', { name: 'Purchases', exact: true }).click();
+  await page.getByRole('button', { name: 'New purchase', exact: true }).click();
+  await page.getByRole('button', { name: 'Add customer here' }).click();
+  await page.getByLabel('Customer name', { exact: true }).fill('Calendar Customer');
+  await page.getByLabel('Phone', { exact: true }).fill('9876543210');
+  await page.getByRole('button', { name: 'Save customer', exact: true }).click();
+  for (const name of ['First medicine', 'Second medicine']) {
+    await page.getByRole('button', { name: 'Add medicine here' }).click();
+    await page.getByLabel('Medicine name', { exact: true }).fill(name);
+    await page.getByLabel('Strength', { exact: true }).fill('10 mg');
+    await page.getByRole('button', { name: 'Save medicine', exact: true }).click();
+  }
+  const firstRow = page.getByRole('group', {
+    name: 'Quantity row for First medicine · 10 mg · tablet',
+    exact: true,
+  });
+  const secondRow = page.getByRole('group', {
+    name: 'Quantity row for Second medicine · 10 mg · tablet',
+    exact: true,
+  });
+  await firstRow.getByLabel('Quantity', { exact: true }).fill('2');
+  await secondRow.getByLabel('Quantity', { exact: true }).fill('3.5');
+  await secondRow.getByLabel('Unit', { exact: true }).selectOption('strips');
+  await expect(firstRow.getByLabel('Quantity', { exact: true })).toHaveValue('2');
+  await expect(firstRow.getByLabel('Unit', { exact: true })).toHaveValue('tablets');
+  const firstSupply = page.getByRole('region', {
+    name: 'Supply for First medicine · 10 mg · tablet',
+    exact: true,
+  });
+  const secondSupply = page.getByRole('region', {
+    name: 'Supply for Second medicine · 10 mg · tablet',
+    exact: true,
+  });
+  await firstSupply.getByLabel('Days supplied', { exact: true }).fill('7');
+  await secondSupply.getByLabel('Days supplied', { exact: true }).fill('14');
+  const choice = firstSupply.getByLabel('Refill choice', { exact: true });
+  await expect(choice.locator('option:enabled')).toHaveText([
+    'Extend remaining supply',
+    'Replace — start fresh',
+  ]);
+  await expect(choice.locator('option[value=""]')).toBeDisabled();
+  await expect(choice.locator('option[value=""]')).toHaveAttribute('hidden', '');
+  await choice.focus();
+  await page.keyboard.press('ArrowDown');
+  await expect(choice).toHaveValue('extend');
+  await page.keyboard.press('ArrowDown');
+  await expect(choice).toHaveValue('replace');
+  await expect(
+    firstSupply.getByLabel('Remaining days adjustment (optional)', { exact: true }),
+  ).toBeDisabled();
+  await choice.selectOption('extend');
+  await firstSupply.getByLabel('Remaining days adjustment (optional)', { exact: true }).fill('0');
+  await expect(secondSupply.getByLabel('Refill choice', { exact: true })).toHaveValue('');
+  await firstSupply.getByLabel('Enable reminder for First medicine · 10 mg · tablet').check();
+
+  // Call the real native picker and count only successful calls from trusted clicks.
+  await page.evaluate(() => {
+    const showPicker = HTMLInputElement.prototype.showPicker;
+    HTMLInputElement.prototype.showPicker = function () {
+      showPicker.call(this);
+      this.dataset.pickerOpened = String(Number(this.dataset.pickerOpened ?? '0') + 1);
+    };
+  });
+  const dates = [
+    page.getByLabel('Purchase date', { exact: true }),
+    firstSupply.getByLabel('Supply start date', { exact: true }),
+    firstSupply.getByLabel('Manual reminder date (optional)', { exact: true }),
+  ];
+  for (const field of dates) {
+    await field.scrollIntoViewIfNeeded();
+    const size = (await field.boundingBox())!;
+    for (const [i, x] of [20, size.width / 2, size.width - 20].entries()) {
+      await field.click({ position: { x, y: size.height / 2 } });
+      await expect(field).toHaveAttribute('data-picker-opened', String(i + 1));
+      await page.keyboard.press('Escape');
+    }
+  }
+  const today = await dates[0].inputValue();
+  await dates[2].fill(today);
+  await expect(dates[2]).toHaveValue(today);
+  await page.getByRole('button', { name: 'Refresh supply preview' }).click();
+  await expect(firstSupply.locator('.supply-estimate')).toContainText('Carry 0 days');
+  await expect(secondSupply.getByLabel('Days supplied', { exact: true })).toHaveValue('14');
+  await page.getByRole('button', { name: 'Save purchase', exact: true }).click();
+  await page.getByRole('button', { name: 'View purchase #1', exact: true }).click();
+  await expect(page.locator('.purchase-detail')).toContainText('2 tablets');
+  await expect(page.locator('.purchase-detail')).toContainText('3.5 strips');
 });

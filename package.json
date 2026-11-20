@@ -1,7 +1,7 @@
 {
   "name": "medi-pharm-desktop",
   "productName": "MediPharm Desktop Preview",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "private": true,
   "description": "Offline Windows pharmacy desktop application \u2014 development preview",
   "author": "Fructum",
