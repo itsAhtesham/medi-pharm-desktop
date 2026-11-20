@@ -11,3 +11,6 @@ coverage/
 *.mpbackup
 *.log
 .pnpm-store/
+
+# Local synthetic pharmacy profiles
+.demo-data/

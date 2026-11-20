@@ -25,7 +25,9 @@
     "format:check": "prettier --check src tests *.config.* package.json tsconfig*.json index.html",
     "test:unit": "vitest run tests/unit",
     "test:integration": "vitest run tests/integration",
-    "test:recovery": "vitest run tests/recovery"
+    "test:recovery": "vitest run tests/recovery",
+    "seed:demo": "vite build --config vite.demo.config.mts && node .vite/demo/demo.cjs seed",
+    "dev:demo": "vite build --config vite.demo.config.mts && node .vite/demo/demo.cjs open"
   },
   "dependencies": {
     "better-sqlite3": "13.0.3",

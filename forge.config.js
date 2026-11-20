@@ -9,7 +9,10 @@ module.exports = {
     // Forge's Vite default keeps only bundles. The service also needs native
     // runtime dependencies; packager's pruning removes the development packages.
     ignore: (file) =>
-      Boolean(file) && !/^\/(?:\.vite|node_modules)(?:\/|$)/.test(file) && file !== '/package.json',
+      /^\/\.vite\/demo(?:\/|$)/.test(file) ||
+      (Boolean(file) &&
+        !/^\/(?:\.vite|node_modules)(?:\/|$)/.test(file) &&
+        file !== '/package.json'),
   },
   rebuildConfig: {},
   makers: [

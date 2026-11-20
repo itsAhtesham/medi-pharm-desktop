@@ -56,6 +56,8 @@ pnpm test:desktop  # test that packaged artifact; needs a desktop session
 
 On Linux the packaged executable is `out/MediPharm Desktop Preview-linux-x64/medipharm-preview`. This is a development artifact, not a Linux customer release.
 
+For a separate synthetic pharmacy with 50 customers, 60 medicines and 180 priced purchases, run `pnpm seed:demo` once, then `pnpm dev:demo`. See [demo data and login instructions](docs/DEMO_DATA.md). Seeding never replaces an existing profile.
+
 Preview data lives in `${XDG_DATA_HOME:-~/.local/share}/medi-pharm-desktop-preview/` on Linux or `%LOCALAPPDATA%/MediPharm Desktop Preview/` on Windows. These identities are deliberately separate from the future production app. Automated desktop tests set `MEDIPHARM_PREVIEW_HOME` to a fresh temporary directory. That override belongs to this preview and must not become a production authentication/reset bypass.
 
 The live database is `data/live/medipharm.sqlite`, with installation identity in `settings/installation.json`. The new preview does not open or import old prototype data. Setup displays a login recovery code before creating the account; save it privately, then acknowledge it. Password/recovery changes require a new sign-in. No credentials are built in.
