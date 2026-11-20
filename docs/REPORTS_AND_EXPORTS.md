@@ -2,7 +2,7 @@
 
 ## Consolidated customer supplies
 
-Open **Customers → View current supplies**. The report has one row per medicine represented by an included supply on an active purchase. It is searchable and paginated, and archived customers/medicines remain visible for reference.
+Open **Customers → View current supplies**. This opens a dedicated supply view. Source purchases open their own details view; Back retains the supply search and page. The report has one row per medicine represented by an included supply on an active purchase. It is searchable and paginated, and archived customers/medicines remain visible for reference.
 
 - **Coverage today** uses the latest supply that has actually started, in purchase-date/sequence order. Remaining days are a date-based estimate, never a count of physical stock. A run-out today shows zero remaining days; an expired supply is labelled exhausted.
 - **Latest recorded supply** shows its start, new/carried days, run-out and a link to its purchase. It can start in the future. The earliest future supply start is shown separately so planned stock is not mistaken for coverage available today.
@@ -14,7 +14,7 @@ Cancelling or correcting purchases changes the report through the existing chain
 
 Use **Export CSV** on Customers, Medicines, Purchases, Reports or Follow-ups. This exports all records matching the displayed search/status filters across all pages. Follow-ups also offer **Export matching follow-up history**; its filters select cycles, then include their events.
 
-Use **Settings → CSV exports** for the whole dataset, including archived catalogue entries, cancelled purchases and all reminder cycles.
+Use **Settings → Open CSV exports** (or the CSV exports sidebar shortcut) for the whole dataset, including archived catalogue entries, cancelled purchases and all reminder cycles.
 
 | Export | One data row represents | Included details |
 | --- | --- | --- |

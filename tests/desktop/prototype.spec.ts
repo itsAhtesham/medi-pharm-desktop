@@ -334,6 +334,7 @@ test('second launch reuses the window and closing stops the database service', a
 const backupPassphrase = 'separate desktop backup phrase';
 async function configureBackups(page: import('@playwright/test').Page) {
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await page.getByRole('button', { name: 'Open backups & restore', exact: true }).click();
   await page.getByLabel('New backup passphrase', { exact: true }).fill(backupPassphrase);
   await page.getByLabel('Confirm backup passphrase', { exact: true }).fill(backupPassphrase);
   await page.getByLabel('I have saved this backup passphrase separately').check();
@@ -353,9 +354,11 @@ test('encrypted backup, verified restore, safety copy and restored owner login w
   const page = await launch();
   await setup(page);
   const filename = await configureBackups(page);
+  await page.getByRole('button', { name: 'Back to settings', exact: true }).click();
   await page.getByLabel('Pharmacy name', { exact: true }).fill('Later pharmacy name');
   await page.getByRole('button', { name: 'Save pharmacy details' }).click();
   await expect(page.getByText('Pharmacy details saved on this computer.')).toBeVisible();
+  await page.getByRole('button', { name: 'Open backups & restore', exact: true }).click();
   await app!.evaluate(({ dialog }, filename) => {
     dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [filename] });
     dialog.showMessageBox = async () => ({ response: 1, checkboxChecked: false });
@@ -363,6 +366,13 @@ test('encrypted backup, verified restore, safety copy and restored owner login w
   await page.getByLabel('Passphrase for the archive').fill(backupPassphrase);
   await page.getByRole('button', { name: 'Choose and verify backup' }).click();
   await expect(page.getByRole('heading', { name: 'Verified: Test Pharmacy' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Review restore', exact: true })).toBeFocused();
+  await expect(page.getByRole('button', { name: 'Create encrypted backup' })).toBeHidden();
+  await expect(page.getByLabel('Passphrase for the archive')).toBeHidden();
+  await page.getByRole('button', { name: 'Back to backups & restore', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Review restore', exact: true })).toHaveCount(0);
+  await page.getByLabel('Passphrase for the archive').fill(backupPassphrase);
+  await page.getByRole('button', { name: 'Choose and verify backup' }).click();
   await expect(page.getByRole('button', { name: 'Restore this pharmacy' })).toBeDisabled();
   await page.getByLabel('Type RESTORE to confirm replacement').fill('RESTORE');
   await page.screenshot({ path: 'test-results/backup-restore-preview.png', fullPage: true });
@@ -413,6 +423,7 @@ test('unavailable OS protection keeps the backup key in memory and requires unlo
     safeStorage.isAsyncEncryptionAvailable = async () => false;
   });
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await page.getByRole('button', { name: 'Open backups & restore', exact: true }).click();
   await page.getByLabel('New backup passphrase', { exact: true }).fill(backupPassphrase);
   await page.getByLabel('Confirm backup passphrase', { exact: true }).fill(backupPassphrase);
   await page.getByLabel('I have saved this backup passphrase separately').check();
@@ -424,6 +435,7 @@ test('unavailable OS protection keeps the backup key in memory and requires unlo
   page = await launch();
   await login(page);
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await page.getByRole('button', { name: 'Open backups & restore', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Create encrypted backup' })).toBeDisabled();
   await page.getByLabel('Backup passphrase', { exact: true }).fill(backupPassphrase);
   await page.getByLabel('Remember securely on this computer', { exact: false }).uncheck();
@@ -546,6 +558,12 @@ test('customer, medicine, purchase, contact, refill and cancellation work throug
   await page.getByRole('button', { name: 'Save follow-up', exact: true }).click();
   await page.getByLabel('Follow-up view').selectOption('scheduled');
   await expect(page.locator('.follow-row')).toContainText('Awaiting refill');
+  await page.getByRole('button', { name: 'Contact history', exact: true }).click();
+  await expect(page.getByRole('heading', { name: /Contact history · Asha Rao/ })).toBeVisible();
+  await expect(page.getByLabel('Follow-up view')).toBeHidden();
+  await expect(page.locator('.history-view')).toContainText('Reached customer; call tomorrow');
+  await page.getByRole('button', { name: 'Back to follow-ups', exact: true }).click();
+  await expect(page.getByLabel('Follow-up view')).toHaveValue('scheduled');
   await page.getByRole('button', { name: 'Record refill', exact: true }).click();
   await page.getByLabel('Days supplied', { exact: true }).fill('21');
   await page.getByLabel('Refill choice', { exact: true }).selectOption('replace');
@@ -579,11 +597,27 @@ test('customer, medicine, purchase, contact, refill and cancellation work throug
   await expect(restarted.locator('.record-row')).toContainText('Asha Rao');
   await restarted.getByRole('button', { name: 'View purchases', exact: true }).click();
   await expect(
+    restarted.getByRole('heading', { name: 'Purchase history · Asha Rao', exact: true }),
+  ).toBeFocused();
+  await expect(restarted.getByLabel('Search customers', { exact: true })).toBeHidden();
+  await restarted.screenshot({ path: 'test-results/dedicated-purchase-history.png' });
+  await expect(
     restarted.getByRole('button', { name: 'View purchase #1', exact: true }),
   ).toBeVisible();
   await restarted.getByRole('button', { name: 'View purchase #1', exact: true }).click();
+  await expect(restarted.locator('.purchase-history')).toBeHidden();
+  await expect(restarted.locator('.purchase-detail h2')).toBeFocused();
+  await expect.poll(() => restarted.locator('.main-layout').evaluate((e) => e.scrollTop)).toBe(0);
+  await restarted.screenshot({ path: 'test-results/dedicated-purchase-details.png' });
+  await restarted.getByRole('button', { name: 'View audit history', exact: true }).click();
+  await expect(restarted.locator('.purchase-detail')).toBeHidden();
+  await expect(
+    restarted.getByRole('heading', { name: 'Audit history · Purchase #1', exact: true }),
+  ).toBeFocused();
+  await expect(restarted.locator('.audit-history article').first()).toBeVisible();
+  await restarted.getByRole('button', { name: 'Back to purchase #1', exact: true }).click();
   await restarted.getByRole('button', { name: 'Back to purchase history', exact: true }).click();
-  await expect(restarted.locator('.related-history')).toBeFocused();
+  await expect(restarted.locator('.purchase-history h2')).toBeFocused();
   await expect(
     restarted.getByRole('button', { name: 'View purchase #1', exact: true }),
   ).toBeVisible();
@@ -703,6 +737,7 @@ test('current supplies and native CSV exports preserve filters, history and exis
   await page.getByRole('button', { name: 'Customers', exact: true }).click();
   await page.getByRole('button', { name: 'View current supplies', exact: true }).click();
   const supplies = page.getByRole('region', { name: 'Current medicine supplies' });
+  await expect(page.getByLabel('Search customers', { exact: true })).toBeHidden();
   await expect(supplies.locator('.supply-report-row')).toHaveCount(2);
   await expect(supplies).toContainText('1 estimated days remaining');
   await expect(supplies).toContainText('7 estimated days remaining');
@@ -713,6 +748,7 @@ test('current supplies and native CSV exports preserve filters, history and exis
   await expect(supplies.locator('.supply-report-row')).toHaveCount(1);
   await supplies.getByRole('button', { name: 'View source purchase #1' }).first().click();
   await expect(page.locator('.purchase-detail')).toContainText('Report purchase');
+  await expect(supplies).toBeHidden();
   await page.getByRole('button', { name: 'Correct purchase', exact: true }).click();
   await page.getByLabel('Purchase notes').fill('Unsaved correction');
   await page.getByRole('button', { name: 'Back to purchase #1', exact: true }).click();
@@ -755,6 +791,7 @@ test('current supplies and native CSV exports preserve filters, history and exis
     await page.getByRole('button', { name: 'Export CSV', exact: true }).click();
     await expect(page.getByRole('alert')).toContainText('outside the application data folder');
     await page.getByRole('button', { name: 'Settings', exact: true }).click();
+    await page.getByRole('button', { name: 'Open CSV exports', exact: true }).click();
     await page.getByLabel('Records to export', { exact: true }).selectOption('followupHistory');
     const history = path.join(output, 'history.csv');
     await app!.evaluate(({ dialog }, filename) => {
@@ -869,7 +906,7 @@ test('dashboard quick actions preserve drafts, show saved totals and fit desktop
   await expect(page.getByRole('region', { name: 'Current medicine supplies' })).toContainText(
     'Dashboard Medicine',
   );
-  await page.getByRole('button', { name: 'Overview', exact: true }).click();
+  await page.getByRole('button', { name: 'Back to overview', exact: true }).click();
   await quick.getByRole('button', { name: 'Due follow-ups', exact: true }).click();
   await expect(page.getByLabel('Follow-up view')).toHaveValue('due');
   await expect(page.locator('.follow-row')).toContainText('Dashboard Medicine');
@@ -1285,4 +1322,157 @@ test('Back preserves list pagination and archived filters and cancels its dialog
   await expect(page.getByLabel('Record status', { exact: true })).toHaveValue('archived');
   await expect(page.locator('.pagination')).toContainText('Page 2');
   await expect(page.locator('.record-row strong')).toHaveText(names);
+});
+
+test('Settings opens separate backup and export views while retaining pharmacy drafts', async () => {
+  const page = await launch();
+  await setup(page);
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await page.getByLabel('Pharmacy name', { exact: true }).fill('Keep this settings draft');
+  await expect(page.getByLabel('Records to export')).toHaveCount(0);
+  await expect(page.getByLabel('New backup passphrase', { exact: true })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Open CSV exports', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'CSV exports', exact: true })).toBeFocused();
+  await expect(page.getByLabel('Pharmacy name', { exact: true })).toBeHidden();
+  await expect(page.getByLabel('Records to export')).toBeVisible();
+  await page.getByRole('button', { name: 'Back to settings', exact: true }).click();
+  await expect(page.getByLabel('Pharmacy name', { exact: true })).toHaveValue(
+    'Keep this settings draft',
+  );
+  await page.getByRole('button', { name: 'Open backups & restore', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Encrypted backups & restore' })).toBeFocused();
+  await expect(page.getByLabel('Pharmacy name', { exact: true })).toBeHidden();
+  await expect(page.getByLabel('Records to export')).toHaveCount(0);
+  await expect(page.getByLabel('New backup passphrase', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Back to settings', exact: true }).click();
+  await expect(page.getByLabel('Pharmacy name', { exact: true })).toHaveValue(
+    'Keep this settings draft',
+  );
+});
+
+test('customer and medicine purchase history are dedicated views and preserve their page through details', async () => {
+  const page = await launch();
+  await setup(page);
+  await page.evaluate(async () => {
+    const api = window.mediPharm;
+    const customer = await api.businessSave({
+      kind: 'customer',
+      requestId: crypto.randomUUID(),
+      id: null,
+      expectedVersion: null,
+      name: 'History Customer',
+      phone: '9876543210',
+      age: null,
+      notes: '',
+      archived: false,
+    });
+    const medicine = await api.businessSave({
+      kind: 'medicine',
+      requestId: crypto.randomUUID(),
+      id: null,
+      expectedVersion: null,
+      name: 'History Medicine',
+      strength: '10 mg',
+      form: 'tablet',
+      archived: false,
+    });
+    if (!customer.ok || !medicine.ok) throw new Error('Fixture catalogue creation failed');
+    const today = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Kolkata',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(new Date());
+    for (let i = 0; i < 21; i++) {
+      const draft = {
+        id: null,
+        expectedVersion: null,
+        customerId: customer.data.id,
+        date: today,
+        notes: `History purchase ${i}`,
+        reason: '',
+        items: [{ medicineId: medicine.data.id, quantity: '1', unit: 'tablets' as const }],
+        supplies: [
+          {
+            medicineId: medicine.data.id,
+            start: today,
+            days: 7,
+            mode: 'replace' as const,
+            remaining: null,
+            reminder: false,
+            manualDate: null,
+            confirmLate: false,
+          },
+        ],
+      };
+      const preview = await api.purchasePreview(draft);
+      if (!preview.ok) throw new Error(preview.message);
+      const result = await api.businessSave({
+        ...draft,
+        kind: 'purchase',
+        requestId: crypto.randomUUID(),
+        expectedRevision: preview.data.revision,
+      });
+      if (!result.ok) throw new Error(result.message);
+    }
+  });
+  for (const section of ['Customers', 'Medicines']) {
+    await page.getByRole('button', { name: section, exact: true }).click();
+    const search = page.getByLabel(`Search ${section.toLowerCase()}`, { exact: true });
+    await search.fill('History');
+    await page.getByRole('button', { name: 'View purchases', exact: true }).click();
+    const history = page.locator('.purchase-history');
+    await expect(search).toBeHidden();
+    await expect(history.locator('.record-row')).toHaveCount(20);
+    await history.getByRole('button', { name: 'More purchases', exact: true }).click();
+    await expect(history.locator('.record-row')).toHaveCount(1);
+    const purchaseName = await history
+      .getByRole('button', { name: /^View purchase #/ })
+      .textContent();
+    await history.getByRole('button', { name: purchaseName!, exact: true }).click();
+    await expect(history).toBeHidden();
+    await expect(page.locator('.purchase-detail')).toBeVisible();
+    await expect.poll(() => page.locator('.main-layout').evaluate((e) => e.scrollTop)).toBe(0);
+    await page.getByRole('button', { name: 'Back to purchase history', exact: true }).click();
+    await expect(history).toContainText('Page 2');
+    await expect(history.locator('.record-row')).toHaveCount(1);
+    await expect(history.getByRole('button', { name: purchaseName!, exact: true })).toBeVisible();
+    await page
+      .getByRole('button', { name: `Back to ${section.toLowerCase()}`, exact: true })
+      .click();
+    await expect(search).toHaveValue('History');
+    await expect(search).toBeVisible();
+  }
+});
+
+test('dashboard entry views return to Overview and active section tabs return to their list', async () => {
+  const page = await launch();
+  await setup(page);
+  const quick = page.getByRole('complementary', { name: 'Quick actions' });
+  await quick.getByRole('button', { name: 'New customer', exact: true }).click();
+  await page.getByLabel('Customer name', { exact: true }).fill('Unfinished dashboard customer');
+  await page.getByRole('button', { name: 'Back to overview', exact: true }).click();
+  await page.getByRole('button', { name: 'Continue editing', exact: true }).click();
+  await expect(page.getByLabel('Customer name', { exact: true })).toHaveValue(
+    'Unfinished dashboard customer',
+  );
+  await page.getByRole('button', { name: 'Back to overview', exact: true }).click();
+  await page.getByRole('button', { name: 'Discard and leave', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Welcome to Test Pharmacy' })).toBeVisible();
+  await expect(page.getByTestId('customers-count')).toHaveText('0');
+  await quick.getByRole('button', { name: 'Create backup', exact: true }).click();
+  await page.getByRole('button', { name: 'Back to overview', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Welcome to Test Pharmacy' })).toBeVisible();
+  await page.getByRole('button', { name: 'Customers', exact: true }).click();
+  await page.getByRole('button', { name: 'Add customer', exact: true }).click();
+  await page.getByLabel('Customer name', { exact: true }).fill('Tab customer');
+  await page.getByLabel('Phone', { exact: true }).fill('9876543210');
+  await page.getByRole('button', { name: 'Save customer', exact: true }).click();
+  await page.getByLabel('Search customers', { exact: true }).fill('Tab');
+  await page.getByRole('button', { name: 'View purchases', exact: true }).click();
+  await expect(page.locator('.purchase-history')).toBeVisible();
+  await page.getByRole('button', { name: 'Customers', exact: true }).click();
+  await expect(page.locator('.purchase-history')).toHaveCount(0);
+  await expect(page.getByLabel('Search customers', { exact: true })).toHaveValue('Tab');
+  await expect(page.getByLabel('Search customers', { exact: true })).toBeVisible();
 });

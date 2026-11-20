@@ -10,7 +10,22 @@ export const sections = [
 export type Section = (typeof sections)[number];
 export type NavigationIntent = {
   key: string;
-  action: 'newCustomer' | 'newMedicine' | 'newPurchase' | 'due' | 'scheduled' | 'all' | 'supplies';
+  action:
+    | 'list'
+    | 'newCustomer'
+    | 'newMedicine'
+    | 'newPurchase'
+    | 'due'
+    | 'scheduled'
+    | 'all'
+    | 'supplies'
+    | 'backups'
+    | 'exports';
   id?: string;
 };
-export type Navigate = (section: Section, action?: NavigationIntent['action'], id?: string) => void;
+export type Navigate = (
+  section: Section,
+  action?: NavigationIntent['action'],
+  id?: string,
+  returnTo?: Section,
+) => void;

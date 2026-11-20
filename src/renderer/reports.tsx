@@ -6,15 +6,21 @@ export function CsvButton({
   selection,
   disabled,
   label = 'Export CSV',
+  onBusy,
 }: {
   selection: CsvInput;
   disabled: boolean;
   label?: string;
+  onBusy?: (busy: boolean) => void;
 }) {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const gate = useRef(false);
+  useEffect(() => {
+    onBusy?.(busy);
+    return () => onBusy?.(false);
+  }, [busy, onBusy]);
   return (
     <div className="csv-control">
       <button
@@ -61,11 +67,22 @@ export function CsvButton({
     </div>
   );
 }
-export function ExportSettings({ disabled }: { disabled: boolean }) {
+export function ExportSettings({
+  disabled,
+  onBusy,
+}: {
+  disabled: boolean;
+  onBusy?: (busy: boolean) => void;
+}) {
   const [kind, setKind] = useState<CsvInput['kind']>('customers');
+  const [exportBusy, setExportBusy] = useState(false);
+  useEffect(() => {
+    onBusy?.(exportBusy);
+    return () => onBusy?.(false);
+  }, [exportBusy, onBusy]);
   return (
     <section className="card export-settings">
-      <h2>CSV exports</h2>
+      <h2 tabIndex={-1}>CSV exports</h2>
       <p className="body-copy">
         Export all records, including archived catalogue entries and cancelled purchases. Purchase
         exports have one row per quantity/unit; follow-up history has one row per event. These
@@ -75,7 +92,7 @@ export function ExportSettings({ disabled }: { disabled: boolean }) {
       <select
         id="csv-kind"
         value={kind}
-        disabled={disabled}
+        disabled={disabled || exportBusy}
         onChange={(e) => setKind(e.target.value as CsvInput['kind'])}
       >
         <option value="customers">Customers</option>
@@ -84,7 +101,7 @@ export function ExportSettings({ disabled }: { disabled: boolean }) {
         <option value="followups">Follow-up cycles</option>
         <option value="followupHistory">Contact and follow-up history</option>
       </select>
-      <CsvButton key={kind} selection={{ kind }} disabled={disabled} />
+      <CsvButton key={kind} selection={{ kind }} disabled={disabled} onBusy={setExportBusy} />
     </section>
   );
 }
@@ -107,12 +124,14 @@ export function CustomerSupplies({
   revision,
   onClose,
   onPurchase,
+  backDestination = 'customers',
 }: {
   customerId: string;
   enabled: boolean;
   revision: number;
   onClose: () => void;
   onPurchase: (id: string) => void;
+  backDestination?: string;
 }) {
   const heading = useRef<HTMLHeadingElement>(null);
   useEffect(() => {
@@ -154,7 +173,7 @@ export function CustomerSupplies({
   }, []);
   return (
     <section className="card customer-supplies" aria-label="Current medicine supplies">
-      <BackButton destination="customers" onClick={onClose} />
+      <BackButton destination={backDestination} onClick={onClose} />
       <div className="record-row">
         <div>
           <h2 ref={heading} tabIndex={-1}>

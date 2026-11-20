@@ -3,7 +3,7 @@ import { BackButton } from './back-button';
 import { DraftNavigationDialog } from './draft-navigation-dialog';
 import type { NavigationIntent } from './navigation';
 import { CsvButton, CustomerSupplies } from './reports';
-import React, { useEffect, useRef, useState, useId } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState, useId } from 'react';
 import {
   units,
   businessMutationSchema,
@@ -161,6 +161,8 @@ export function BusinessWorkspace({
   onDirty,
   onBlocked,
   onCommit,
+  returnTo,
+  onReturn,
 }: {
   section: string;
   intent: NavigationIntent | null;
@@ -170,6 +172,8 @@ export function BusinessWorkspace({
   onDirty: (dirty: boolean) => void;
   onBlocked: (blocked: boolean) => void;
   onCommit: () => void;
+  returnTo: string | null;
+  onReturn: () => void;
 }) {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(0);
@@ -197,7 +201,13 @@ export function BusinessWorkspace({
     label: string;
   } | null>(null);
   const [supplyCustomer, setSupplyCustomer] = useState<string | null>(null);
-  const [auditId, setAuditId] = useState<string | undefined>();
+  const [auditView, setAuditView] = useState<{
+    id: string;
+    title: string;
+    origin: 'list' | 'detail';
+  } | null>(null);
+  const editorReturnsOutside = useRef(false);
+  const detailRequest = useRef(0);
   const epochRef = useRef(epoch);
   epochRef.current = epoch;
   const kind: BusinessQuery['kind'] =
@@ -208,9 +218,7 @@ export function BusinessWorkspace({
         : section === 'Purchases'
           ? 'purchases'
           : section === 'Reports'
-            ? auditId
-              ? 'history'
-              : 'purchases'
+            ? 'purchases'
             : 'followups';
   const dirty = editor !== null || pending !== null;
   useEffect(() => {
@@ -218,24 +226,34 @@ export function BusinessWorkspace({
   }, [enabled, active, epoch]);
   useEffect(() => onDirty(dirty), [dirty, onDirty]);
   useEffect(() => onBlocked(working || pending !== null), [working, pending, onBlocked]);
-  useEffect(() => {
+  useLayoutEffect(() => {
     setPage(0);
     setSearch('');
     setDetail(null);
     setHistoryFilter(null);
     setSupplyCustomer(null);
-    setAuditId(undefined);
+    setAuditView(null);
+    detailRequest.current++;
     setData(null);
   }, [section]);
   const consumedIntent = useRef<string | null>(null);
   useEffect(() => {
     if (!active || !enabled || !intent || consumedIntent.current === intent.key) return;
     consumedIntent.current = intent.key;
-    setPage(0);
-    setSearch('');
+    if (intent.action !== 'list') {
+      setPage(0);
+      setSearch('');
+    }
     setError('');
     setMessage('');
     setPreview(null);
+    setDetail(null);
+    setHistoryFilter(null);
+    setSupplyCustomer(null);
+    setAuditView(null);
+    detailRequest.current++;
+    editorReturnsOutside.current = Boolean(returnTo);
+    if (intent.action === 'list') setEditor(null);
     if (intent.action === 'newCustomer' || intent.action === 'newMedicine') {
       const value = freshCatalog(intent.action === 'newCustomer' ? 'customer' : 'medicine');
       catalogBaseline.current = value;
@@ -249,7 +267,7 @@ export function BusinessWorkspace({
     if (intent.action === 'due' || intent.action === 'scheduled' || intent.action === 'all')
       setTab(intent.action);
     if (intent.action === 'supplies' && intent.id) setSupplyCustomer(intent.id);
-  }, [intent, active, enabled]);
+  }, [intent, active, enabled, returnTo]);
   useEffect(() => {
     if (!active || !enabled) return;
     let live = true;
@@ -262,10 +280,6 @@ export function BusinessWorkspace({
           page,
           archived,
           tab,
-          ...(historyFilter
-            ? { customerId: historyFilter.customerId, medicineId: historyFilter.medicineId }
-            : {}),
-          id: auditId,
         })
         .then((r) => {
           if (!live || epochRef.current !== generation) return;
@@ -277,7 +291,7 @@ export function BusinessWorkspace({
       live = false;
       clearTimeout(timer);
     };
-  }, [active, enabled, epoch, kind, search, page, archived, tab, tick, historyFilter, auditId]);
+  }, [active, enabled, epoch, kind, search, page, archived, tab, tick]);
   useEffect(() => {
     const sync = () => setTick((t) => t + 1);
     window.addEventListener('focus', sync);
@@ -288,6 +302,8 @@ export function BusinessWorkspace({
     };
   }, []);
   const begin = (e: Editor) => {
+    if (!(e.type === 'catalog' && e.inline)) editorReturnsOutside.current = false;
+    detailRequest.current++;
     if (e.type === 'catalog') catalogBaseline.current = e.value;
     if (e.type === 'purchase') purchaseBaseline.current = e.value;
     setEditor(e);
@@ -450,7 +466,9 @@ export function BusinessWorkspace({
     ? 'purchase'
     : editorReturnsToDetail
       ? `purchase #${detail.sequence}`
-      : listDestination;
+      : editorReturnsOutside.current && returnTo
+        ? returnTo.toLowerCase()
+        : listDestination;
   const detailDestination =
     detailOrigin === 'supplies'
       ? 'current supplies'
@@ -459,7 +477,8 @@ export function BusinessWorkspace({
         : listDestination;
   function focusView(selector: string) {
     requestAnimationFrame(() => {
-      workspace.current?.querySelector<HTMLElement>(selector)?.focus();
+      workspace.current?.querySelector<HTMLElement>(selector)?.focus({ preventScroll: true });
+      workspace.current?.closest('.main-layout')?.scrollTo({ top: 0 });
     });
   }
   function openDetail(value: Purchase | null, origin: typeof detailOrigin) {
@@ -467,6 +486,23 @@ export function BusinessWorkspace({
     setDetail(value);
     if (value) focusView('.purchase-detail h2');
   }
+  useEffect(() => {
+    // Keep focus on the tab bar when switching main sections by keyboard.
+    if (!active || !(editor || auditView || detail || supplyCustomer || historyFilter)) return;
+    focusView(
+      editor
+        ? '.business-editor h2'
+        : auditView
+          ? '.history-view h2'
+          : detail
+            ? '.purchase-detail h2'
+            : supplyCustomer
+              ? '.customer-supplies h2'
+              : historyFilter
+                ? '.purchase-history h2'
+                : '.business-toolbar input',
+    );
+  }, [active, editor?.type, detail?.id, auditView?.id, supplyCustomer, historyFilter]);
   return (
     <div className="business-workspace" ref={workspace}>
       {backRequested && editor && active && enabled && (
@@ -479,6 +515,10 @@ export function BusinessWorkspace({
           onDiscard={() => {
             if (blocked) return;
             setBackRequested(false);
+            if (!parent && !editorReturnsToDetail && editorReturnsOutside.current && returnTo) {
+              onReturn();
+              return;
+            }
             discardEditor();
             focusView(
               parent
@@ -1063,7 +1103,8 @@ export function BusinessWorkspace({
           </fieldset>
         </section>
       )}
-      <div hidden={Boolean(editor)}>
+      <div hidden={Boolean(editor || detail || supplyCustomer || historyFilter || auditView)}>
+        {returnTo && <BackButton destination={returnTo.toLowerCase()} onClick={onReturn} />}
         <div className="business-toolbar">
           <Field label={`Search ${kind === 'followups' ? 'customers' : kind}`}>
             <input
@@ -1167,40 +1208,6 @@ export function BusinessWorkspace({
               )}
             </div>
           </div>
-        )}
-        {supplyCustomer && (
-          <CustomerSupplies
-            key={supplyCustomer}
-            customerId={supplyCustomer}
-            enabled={enabled && active}
-            revision={data?.revision ?? 0}
-            onClose={() => {
-              setSupplyCustomer(null);
-              if (detailOrigin === 'supplies') setDetail(null);
-              focusView('.business-toolbar input');
-            }}
-            onPurchase={(id) => {
-              const generation = epoch;
-              void window.mediPharm.businessQuery({ kind: 'purchases', id }).then((r) => {
-                if (epochRef.current !== generation) return;
-                if (r.ok) openDetail(r.data.purchases[0] ?? null, 'supplies');
-                else setError(r.message);
-              });
-            }}
-          />
-        )}
-        {historyFilter && (
-          <p>
-            History for {historyFilter.label}{' '}
-            <BackButton
-              destination={listDestination}
-              onClick={() => {
-                setHistoryFilter(null);
-                if (detailOrigin === 'history') setDetail(null);
-                focusView('.business-toolbar input');
-              }}
-            />
-          </p>
         )}
         {!data ? (
           <p>Loading records…</p>
@@ -1310,18 +1317,6 @@ export function BusinessWorkspace({
                             </div>
                           </td>
                         </tr>
-                        {historyFilter &&
-                          (historyFilter.customerId === row.id ||
-                            historyFilter.medicineId === row.id) && (
-                            <tr>
-                              <td colSpan={4}>
-                                <RelatedPurchases
-                                  filter={historyFilter}
-                                  onSelect={(p) => openDetail(p, 'history')}
-                                />
-                              </td>
-                            </tr>
-                          )}
                       </React.Fragment>
                     ))}
                   </tbody>
@@ -1405,22 +1400,19 @@ export function BusinessWorkspace({
                                 Record refill
                               </button>
                             )}
-                            <button className="text-button" onClick={() => setAuditId(f.id)}>
+                            <button
+                              className="text-button"
+                              onClick={() =>
+                                setAuditView({
+                                  id: f.id,
+                                  title: `Contact history · ${f.customer_name} · ${f.medicine_name}`,
+                                  origin: 'list',
+                                })
+                              }
+                            >
                               Contact history
                             </button>
                           </div>
-                          {auditId === f.id && (
-                            <>
-                              <BackButton
-                                destination="follow-ups"
-                                onClick={() => {
-                                  setAuditId(undefined);
-                                  focusView('.business-toolbar input');
-                                }}
-                              />
-                              <AuditHistory id={f.id} />
-                            </>
-                          )}
                         </article>
                       ))}
                     </section>
@@ -1428,7 +1420,6 @@ export function BusinessWorkspace({
                 })}
               </div>
             )}
-            {kind === 'history' && <AuditHistory id={auditId!} />}
             {data.total === 0 && (
               <section className="card empty-state">
                 <h2>No matching records</h2>
@@ -1456,72 +1447,147 @@ export function BusinessWorkspace({
             </div>
           </>
         )}
-        {detail && (
-          <section className="card purchase-detail">
-            <BackButton
-              destination={detailDestination}
-              onClick={() => {
-                setDetail(null);
-                focusView(
-                  detailOrigin === 'supplies'
-                    ? '.customer-supplies h2'
-                    : detailOrigin === 'history'
-                      ? '.related-history'
-                      : '.business-toolbar input',
-                );
-              }}
-            />
-            <h2 tabIndex={-1}>
-              Purchase #{detail.sequence} · {detail.status}
-            </h2>
-            <p>
-              {detail.customer_name} · {detail.purchase_date}
-            </p>
-            <p>{detail.notes}</p>
-            {detail.items.map((i, n) => (
-              <p key={n}>
-                {i.name_snapshot} {i.strength_snapshot} {i.form_snapshot} —{' '}
-                {i.quantity_milli / 1000} {i.unit}
-              </p>
-            ))}
-            {detail.supplies.map((s) => (
-              <p key={s.id}>
-                Start {s.start_date} · {s.new_days} new + {s.remaining_used} carried days · Run-out{' '}
-                {s.run_out_date} · {s.reminder_enabled ? 'Reminder enabled' : 'Reminder disabled'}
-              </p>
-            ))}
-            <div className="business-actions">
-              {detail.status === 'active' && (
-                <>
-                  <button
-                    className="secondary"
-                    disabled={!enabled}
-                    onClick={() => editPurchase(detail)}
-                  >
-                    Correct purchase
-                  </button>
-                  <button
-                    className="secondary"
-                    disabled={!enabled}
-                    onClick={() =>
-                      data &&
-                      begin({
-                        type: 'cancel',
-                        purchase: detail,
-                        reason: '',
-                        revision: data.revision,
-                      })
-                    }
-                  >
-                    Cancel purchase
-                  </button>
-                </>
-              )}
-            </div>
-            <AuditHistory id={detail.id} />
-          </section>
-        )}
       </div>
+      {historyFilter && (
+        <section className="card purchase-history" hidden={Boolean(editor || detail || auditView)}>
+          <BackButton
+            destination={listDestination}
+            onClick={() => {
+              setHistoryFilter(null);
+              focusView('.business-toolbar input');
+            }}
+          />
+          <h2 tabIndex={-1}>Purchase history · {historyFilter.label}</h2>
+          <RelatedPurchases
+            filter={historyFilter}
+            revision={data?.revision ?? 0}
+            onSelect={(p) => openDetail(p, 'history')}
+          />
+        </section>
+      )}
+      {supplyCustomer && (
+        <div hidden={Boolean(editor || detail || auditView)}>
+          <CustomerSupplies
+            key={supplyCustomer}
+            customerId={supplyCustomer}
+            enabled={enabled && active}
+            revision={data?.revision ?? 0}
+            backDestination={
+              returnTo && intent?.action === 'supplies' ? returnTo.toLowerCase() : listDestination
+            }
+            onClose={() => {
+              detailRequest.current++;
+              setSupplyCustomer(null);
+              if (returnTo && intent?.action === 'supplies') onReturn();
+              else focusView('.business-toolbar input');
+            }}
+            onPurchase={(id) => {
+              const generation = epoch;
+              const request = ++detailRequest.current;
+              void window.mediPharm.businessQuery({ kind: 'purchases', id }).then((r) => {
+                if (epochRef.current !== generation || request !== detailRequest.current) return;
+                if (r.ok) openDetail(r.data.purchases[0] ?? null, 'supplies');
+                else setError(r.message);
+              });
+            }}
+          />
+        </div>
+      )}
+      {detail && (
+        <section className="card purchase-detail" hidden={Boolean(editor || auditView)}>
+          <BackButton
+            destination={detailDestination}
+            onClick={() => {
+              setDetail(null);
+              focusView(
+                detailOrigin === 'supplies'
+                  ? '.customer-supplies h2'
+                  : detailOrigin === 'history'
+                    ? '.related-history'
+                    : '.business-toolbar input',
+              );
+            }}
+          />
+          <h2 tabIndex={-1}>
+            Purchase #{detail.sequence} · {detail.status}
+          </h2>
+          <p>
+            {detail.customer_name} · {detail.purchase_date}
+          </p>
+          <p>{detail.notes}</p>
+          {detail.items.map((i, n) => (
+            <p key={n}>
+              {i.name_snapshot} {i.strength_snapshot} {i.form_snapshot} — {i.quantity_milli / 1000}{' '}
+              {i.unit}
+            </p>
+          ))}
+          {detail.supplies.map((s) => (
+            <p key={s.id}>
+              Start {s.start_date} · {s.new_days} new + {s.remaining_used} carried days · Run-out{' '}
+              {s.run_out_date} · {s.reminder_enabled ? 'Reminder enabled' : 'Reminder disabled'}
+            </p>
+          ))}
+          <div className="business-actions">
+            {detail.status === 'active' && (
+              <>
+                <button
+                  className="secondary"
+                  disabled={!enabled}
+                  onClick={() => editPurchase(detail)}
+                >
+                  Correct purchase
+                </button>
+                <button
+                  className="secondary"
+                  disabled={!enabled}
+                  onClick={() =>
+                    data &&
+                    begin({
+                      type: 'cancel',
+                      purchase: detail,
+                      reason: '',
+                      revision: data.revision,
+                    })
+                  }
+                >
+                  Cancel purchase
+                </button>
+              </>
+            )}
+          </div>
+          <button
+            className="secondary"
+            onClick={() =>
+              setAuditView({
+                id: detail.id,
+                title: `Audit history · Purchase #${detail.sequence}`,
+                origin: 'detail',
+              })
+            }
+          >
+            View audit history
+          </button>
+        </section>
+      )}
+      {auditView && (
+        <section className="card history-view" hidden={Boolean(editor)}>
+          <BackButton
+            destination={
+              auditView.origin === 'detail' && detail
+                ? `purchase #${detail.sequence}`
+                : listDestination
+            }
+            onClick={() => {
+              setAuditView(null);
+              focusView(
+                auditView.origin === 'detail' ? '.purchase-detail h2' : '.business-toolbar input',
+              );
+            }}
+          />
+          <h2 tabIndex={-1}>{auditView.title}</h2>
+          <AuditHistory key={auditView.id} id={auditView.id} />
+        </section>
+      )}
     </div>
   );
 }
@@ -1579,8 +1645,10 @@ function PurchaseList({
 function RelatedPurchases({
   filter,
   onSelect,
+  revision,
 }: {
   filter: { customerId?: string; medicineId?: string };
+  revision: number;
   onSelect: (p: Purchase) => void;
 }) {
   const [data, setData] = useState<BusinessData | null>(null);
@@ -1605,16 +1673,21 @@ function RelatedPurchases({
     return () => {
       live = false;
     };
-  }, [filter, page]);
+  }, [filter, page, revision]);
   return (
     <div className="related-history" tabIndex={-1}>
       {error && <p role="alert">{error}</p>}
+      {!data && !error && <p>Loading purchases…</p>}
       {data?.total === 0 && <p>No purchases recorded.</p>}
       <PurchaseList purchases={data?.purchases ?? []} onSelect={onSelect} />
       <div className="business-actions">
         <button className="secondary" disabled={!page} onClick={() => setPage(page - 1)}>
           Earlier page
         </button>
+        <span>
+          Page {page + 1}
+          {data ? ` · ${data.total} purchases` : ''}
+        </span>
         <button
           className="secondary"
           disabled={!data || (page + 1) * 20 >= data.total}
@@ -1644,9 +1717,10 @@ function AuditHistory({ id }: { id: string }) {
     };
   }, [id, page]);
   return (
-    <details className="audit-history">
-      <summary>Audit and contact history</summary>
+    <div className="audit-history">
       {error && <p role="alert">{error}</p>}
+      {!data && !error && <p>Loading history…</p>}
+      {data?.total === 0 && <p>No history recorded.</p>}
       {data?.history.map((h) => (
         <article key={h.id}>
           <strong>{h.action}</strong>
@@ -1672,7 +1746,7 @@ function AuditHistory({ id }: { id: string }) {
       >
         Older history
       </button>
-    </details>
+    </div>
   );
 }
 

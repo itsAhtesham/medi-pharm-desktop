@@ -1,6 +1,6 @@
 # Back up and recover the development preview
 
-Use synthetic pharmacy data until business workflows and Windows release checks are complete. These controls are available in Settings → Encrypted backups & restore.
+Use synthetic pharmacy data until business workflows and Windows release checks are complete. These controls are available in Settings → Open backups & restore, or the Backups & restore sidebar shortcut. Backups and CSV exports have separate views.
 
 ## Create and verify backups
 
@@ -42,3 +42,5 @@ If a prepared replacement was interrupted, startup resolves its journal before p
 Expand Change backup passphrase or encryption key. Verify the current passphrase, enter and save the replacement, and optionally rotate the master encryption key. The app then creates a new verified archive. **Older archives still need their original passphrase**; rotation does not rewrite existing files. Login password changes are independent.
 
 If a credential-change response is interrupted, use the new passphrase to unlock and check/create a backup. If a restore response is interrupted, restart storage and inspect the restored pharmacy after login; do not blindly repeat replacement.
+
+Restore verification opens a dedicated **Review restore** view. Check the pharmacy, capture time and counts before typing RESTORE. **Back to backups & restore** (or **Back to restore setup** during recovery) cancels the preview and returns without replacing data. Other section navigation is unavailable during the review; cancel the review first.

@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import type { WorkspaceStatus, Lifecycle, Result, UpdatePharmacy } from '../contracts/desktop';
 import './styles.css';
+import { BackButton } from './back-button';
 import { BackupPanel } from './backup-panel';
 import { BusinessWorkspace } from './business-workspace';
 import { ExportSettings } from './reports';
@@ -297,12 +298,16 @@ function App() {
     section: Section;
     action?: NavigationIntent['action'];
     id?: string;
+    returnTo?: Section;
   } | null>(null);
   const [businessReset, setBusinessReset] = useState(0);
   const [intent, setIntent] = useState<NavigationIntent | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [backup, setBackup] = useState<BackupStatus | null>(null);
   const [section, setSection] = useState<Section>('Overview');
+  const [returnSection, setReturnSection] = useState<Section | null>(null);
+  const [settingsView, setSettingsView] = useState<'main' | 'backups' | 'exports'>('main');
+  const [settingsBusy, setSettingsBusy] = useState(false);
   const [status, setStatus] = useState<WorkspaceStatus | null>(null);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
@@ -314,7 +319,12 @@ function App() {
   const contentRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     contentRef.current?.scrollTo({ top: 0 });
-  }, [section, intent]);
+    requestAnimationFrame(() => {
+      contentRef.current
+        ?.querySelector<HTMLElement>('.settings-view:not([hidden]) h2')
+        ?.focus({ preventScroll: true });
+    });
+  }, [section, intent, settingsView]);
   const ready = lifecycle?.state === 'ready' || lifecycle?.state === 'maintenance';
   const busy = running || lifecycle?.state === 'maintenance';
   const restored = (backupCreated: boolean) => {
@@ -323,6 +333,8 @@ function App() {
       setDraft(null);
       setPending(null);
       setSection('Overview');
+      setSettingsView('main');
+      setReturnSection(null);
       setStatus(null);
     }
     setMessage(
@@ -429,18 +441,28 @@ function App() {
       return result;
     }, 'Pharmacy details saved on this computer.');
   }
-  const openSection: Navigate = (next, action, id) => {
+  const openSection: Navigate = (next, action, id, returnTo) => {
+    setReturnSection(returnTo ?? null);
+    setSettingsView(action === 'backups' || action === 'exports' ? action : 'main');
     setSection(next);
     setIntent(action ? { key: crypto.randomUUID(), action, id } : null);
     setSidebarOpen(false);
   };
-  const navigate: Navigate = (next, action, id) => {
-    if (!ready || busy || businessBlocked || (next === section && !action)) return;
+  const navigate: Navigate = (next, action, id, returnTo) => {
+    if (next === section && !action && next !== 'Overview' && next !== 'Settings') action = 'list';
+    if (
+      !ready ||
+      busy ||
+      settingsBusy ||
+      businessBlocked ||
+      (next === section && !action && !(section === 'Settings' && settingsView !== 'main'))
+    )
+      return;
     if (businessDirty) {
-      setNavigationTarget({ section: next, action, id });
+      setNavigationTarget({ section: next, action, id, returnTo });
       return;
     }
-    openSection(next, action, id);
+    openSection(next, action, id, returnTo);
   };
   const discardAndNavigate = () => {
     if (!navigationTarget || lifecycleRef.current?.state !== 'ready' || busy || businessBlocked)
@@ -448,12 +470,17 @@ function App() {
     setBusinessReset((value) => value + 1);
     setBusinessDirty(false);
     setBusinessBlocked(false);
-    openSection(navigationTarget.section, navigationTarget.action, navigationTarget.id);
+    openSection(
+      navigationTarget.section,
+      navigationTarget.action,
+      navigationTarget.id,
+      navigationTarget.returnTo,
+    );
     setNavigationTarget(null);
   };
   const createBackup = () => {
     if (!backup?.configured || !backup.unlocked) {
-      navigate('Settings');
+      navigate('Settings', 'backups', undefined, 'Overview');
       return;
     }
     void run(() => window.mediPharm.backupCreate(), 'Encrypted backup created and verified.');
@@ -472,7 +499,8 @@ function App() {
     { label: 'Due reminders', section: 'Follow-ups', action: 'due', icon: 'bell' },
     { label: 'Upcoming reminders', section: 'Follow-ups', action: 'scheduled', icon: 'clock' },
     { label: 'All follow-up cycles', section: 'Follow-ups', action: 'all', icon: 'activity' },
-    { label: 'Backups & exports', section: 'Settings', icon: 'backup' },
+    { label: 'Backups & restore', section: 'Settings', action: 'backups', icon: 'backup' },
+    { label: 'CSV exports', section: 'Settings', action: 'exports', icon: 'chart' },
   ];
   return (
     <div className={`app-shell ${sidebarOpen ? 'sidebar-open' : ''}`}>
@@ -517,7 +545,7 @@ function App() {
           <button
             key={item}
             className={`section-${sectionIcons[item]}`}
-            disabled={!ready || busy || businessBlocked}
+            disabled={!ready || busy || settingsBusy || businessBlocked}
             aria-current={section === item ? 'page' : undefined}
             onClick={() => navigate(item)}
           >
@@ -541,7 +569,7 @@ function App() {
               )}
               <button
                 className={`section-${sectionIcons[item.section]}`}
-                disabled={!ready || busy || businessBlocked}
+                disabled={!ready || busy || settingsBusy || businessBlocked}
                 onClick={() => navigate(item.section, item.action)}
               >
                 <Icon name={item.icon} />
@@ -637,67 +665,124 @@ function App() {
                     enabled={!busy && !businessDirty}
                     revision={status.revision}
                     pharmacy={status.pharmacy.name}
-                    onNavigate={navigate}
+                    onNavigate={(next, action, id) => navigate(next, action, id, 'Overview')}
                     onBackup={createBackup}
                   />
                 ) : section === 'Settings' ? (
                   <>
-                    <div className="content-grid">
-                      <section className="card">
-                        <h2>Pharmacy details</h2>
-                        <p className="body-copy">Business dates use Asia/Kolkata.</p>
-                        <form
-                          onSubmit={(e) => {
-                            e.preventDefault();
-                            void savePharmacy();
-                          }}
-                        >
-                          <label htmlFor="settings-name">Pharmacy name</label>
-                          <input
-                            id="settings-name"
-                            maxLength={120}
-                            required
-                            disabled={busy || Boolean(pending)}
-                            value={pending?.name ?? draft?.name ?? status.pharmacy.name}
-                            onChange={(e) =>
-                              setDraft({
-                                name: e.target.value,
-                                expectedVersion: draft?.expectedVersion ?? status.pharmacy.version,
-                              })
-                            }
-                          />
-                          <button
-                            type="submit"
-                            className="primary"
-                            disabled={busy || !draft || !draft.name.trim()}
-                          >
-                            {pending ? 'Retry same save' : 'Save pharmacy details'}
-                          </button>
-                        </form>
-                        {draft && !pending && (
-                          <button
-                            className="text-button"
-                            disabled={busy}
-                            onClick={() => {
-                              setDraft(null);
-                              setError('');
-                              void refresh();
+                    <div className="settings-view" hidden={settingsView !== 'main'}>
+                      <div className="content-grid">
+                        <section className="card">
+                          <h2>Pharmacy details</h2>
+                          <p className="body-copy">Business dates use Asia/Kolkata.</p>
+                          <form
+                            onSubmit={(e) => {
+                              e.preventDefault();
+                              void savePharmacy();
                             }}
                           >
-                            Use saved details
-                          </button>
-                        )}
-                        {pending && (
-                          <p className="body-copy">
-                            This submission is kept unchanged until the save is confirmed. Sign in
-                            again if needed, then retry the same save.
+                            <label htmlFor="settings-name">Pharmacy name</label>
+                            <input
+                              id="settings-name"
+                              maxLength={120}
+                              required
+                              disabled={busy || Boolean(pending)}
+                              value={pending?.name ?? draft?.name ?? status.pharmacy.name}
+                              onChange={(e) =>
+                                setDraft({
+                                  name: e.target.value,
+                                  expectedVersion:
+                                    draft?.expectedVersion ?? status.pharmacy.version,
+                                })
+                              }
+                            />
+                            <button
+                              type="submit"
+                              className="primary"
+                              disabled={busy || !draft || !draft.name.trim()}
+                            >
+                              {pending ? 'Retry same save' : 'Save pharmacy details'}
+                            </button>
+                          </form>
+                          {draft && !pending && (
+                            <button
+                              className="text-button"
+                              disabled={busy}
+                              onClick={() => {
+                                setDraft(null);
+                                setError('');
+                                void refresh();
+                              }}
+                            >
+                              Use saved details
+                            </button>
+                          )}
+                          {pending && (
+                            <p className="body-copy">
+                              This submission is kept unchanged until the save is confirmed. Sign in
+                              again if needed, then retry the same save.
+                            </p>
+                          )}
+                        </section>
+                        <PasswordForm busy={busy} run={run} />
+                      </div>
+                      <div className="content-grid settings-links">
+                        <section className="card">
+                          <h2>Backups &amp; restore</h2>
+                          <p>
+                            Create encrypted backups, manage backup storage or restore a pharmacy.
                           </p>
-                        )}
-                      </section>
-                      <PasswordForm busy={busy} run={run} />
+                          <button
+                            className="secondary"
+                            onClick={() => {
+                              setReturnSection(null);
+                              setSettingsView('backups');
+                            }}
+                          >
+                            Open backups &amp; restore
+                          </button>
+                        </section>
+                        <section className="card">
+                          <h2>CSV exports</h2>
+                          <p>Export records for spreadsheets and reports.</p>
+                          <button
+                            className="secondary"
+                            onClick={() => {
+                              setReturnSection(null);
+                              setSettingsView('exports');
+                            }}
+                          >
+                            Open CSV exports
+                          </button>
+                        </section>
+                      </div>
                     </div>
-                    <ExportSettings disabled={busy} />
-                    <BackupPanel disabled={busy} onRestored={restored} onStatusChange={setBackup} />
+                    {settingsView === 'exports' && (
+                      <section className="settings-view">
+                        <BackButton
+                          destination={returnSection?.toLowerCase() ?? 'settings'}
+                          disabled={busy || settingsBusy}
+                          onClick={() =>
+                            returnSection ? openSection(returnSection) : setSettingsView('main')
+                          }
+                        />
+                        <ExportSettings disabled={busy} onBusy={setSettingsBusy} />
+                      </section>
+                    )}
+                    {settingsView === 'backups' && (
+                      <section className="settings-view">
+                        <BackupPanel
+                          disabled={busy}
+                          onRestored={restored}
+                          onStatusChange={setBackup}
+                          onBusy={setSettingsBusy}
+                          backDestination={returnSection?.toLowerCase() ?? 'settings'}
+                          onBack={() =>
+                            returnSection ? openSection(returnSection) : setSettingsView('main')
+                          }
+                        />
+                      </section>
+                    )}
                   </>
                 ) : null}
               </>
@@ -713,6 +798,13 @@ function App() {
                 onDirty={setBusinessDirty}
                 onBlocked={setBusinessBlocked}
                 onCommit={() => void refresh()}
+                returnTo={returnSection}
+                onReturn={() => {
+                  setBusinessReset((value) => value + 1);
+                  setBusinessDirty(false);
+                  setBusinessBlocked(false);
+                  openSection(returnSection ?? 'Overview');
+                }}
               />
             </div>
             <footer>
@@ -737,7 +829,7 @@ function App() {
       {navigationTarget && lifecycle?.state === 'ready' && (
         <DraftNavigationDialog
           destination={navigationTarget.section}
-          disabled={busy || businessBlocked}
+          disabled={busy || settingsBusy || businessBlocked}
           onContinue={() => setNavigationTarget(null)}
           onDiscard={discardAndNavigate}
         />
